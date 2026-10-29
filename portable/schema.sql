@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS subjects(id text PRIMARY KEY,owner_id text NOT NULL,document_key text NOT NULL,tax_id text NOT NULL,subject_name text NOT NULL,subject_type text NOT NULL,address text NOT NULL DEFAULT '',email text NOT NULL DEFAULT '',phone text NOT NULL DEFAULT '',activity text NOT NULL DEFAULT '',pep_status boolean NOT NULL DEFAULT false,pep_details text NOT NULL DEFAULT '',client_criteria_ids jsonb NOT NULL DEFAULT '[]',created_at text NOT NULL,updated_at text NOT NULL,UNIQUE(owner_id,document_key));
+CREATE INDEX IF NOT EXISTS subjects_owner_name ON subjects(owner_id,subject_name);
+CREATE TABLE IF NOT EXISTS evaluations(id text PRIMARY KEY,owner_id text NOT NULL,subject_id text REFERENCES subjects(id),created_at text NOT NULL,record jsonb NOT NULL);
+CREATE INDEX IF NOT EXISTS evaluations_owner ON evaluations(owner_id);
+CREATE INDEX IF NOT EXISTS evaluations_subject ON evaluations(subject_id);
+CREATE TABLE IF NOT EXISTS risk_settings(owner_id text PRIMARY KEY,criteria jsonb NOT NULL,factor_weights jsonb NOT NULL,thresholds jsonb NOT NULL,updated_at text NOT NULL);
+CREATE TABLE IF NOT EXISTS organization_settings(owner_id text PRIMARY KEY,organization jsonb NOT NULL,updated_at text NOT NULL);
+CREATE TABLE IF NOT EXISTS app_users(id text PRIMARY KEY,owner_id text NOT NULL,email text NOT NULL UNIQUE,name text NOT NULL,role text NOT NULL,active boolean NOT NULL DEFAULT true,grants jsonb NOT NULL,updated_at text NOT NULL);
+CREATE TABLE IF NOT EXISTS credentials(user_id text PRIMARY KEY REFERENCES app_users(id),password_hash text NOT NULL,updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS sessions(token_hash text PRIMARY KEY,user_id text NOT NULL REFERENCES app_users(id),expires_at timestamptz NOT NULL);
+CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at);
+CREATE TABLE IF NOT EXISTS login_attempts(attempt_key text PRIMARY KEY,failures integer NOT NULL DEFAULT 0,reset_at timestamptz NOT NULL);

@@ -1,0 +1,1 @@
+ALTER TABLE `subjects` ADD `client_criteria_ids` text DEFAULT '[]' NOT NULL;

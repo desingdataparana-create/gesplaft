@@ -43,7 +43,7 @@ export async function GET(req:Request){try{
 export async function POST(req:Request){try{
  writeOwner(req);const user=await access(req),ownerId=user.ownerId,db=getDb();
  const {action,payload}=z.object({action:z.string(),payload:z.record(z.string(),z.unknown())}).parse(await req.json());
- const required:Record<string,import('../../../src/access').Module>={saveOrganization:'ajustes',saveSubject:'sujetos',saveEvaluation:'expedientes',reviewCase:'analisis',updateStatus:'analisis',saveSettings:'riesgo',importLocal:'expedientes'};
+ const required:Record<string,import('../../../src/access').Module>={saveOrganization:'ajustes',saveSubject:'sujetos',saveEvaluation:'expedientes',reviewCase:'analisis',updateStatus:'analisis',saveSettings:'riesgo',deleteCriterion:'riesgo',importLocal:'expedientes'};
  if(!required[action])return json({error:'Operación desconocida.'},400);
  requireModule(user,required[action],true);
  if(action==='importLocal'){requireModule(user,'sujetos',true);requireModule(user,'riesgo',true);}
@@ -125,11 +125,29 @@ export async function POST(req:Request){try{
    if(input.status==='JUSTIFICADO'||input.status==='REPORTE_ROS')return json({error:'El cierre y el registro de ROS requieren un análisis fundamentado.'},400);
    const record={...row.record,status:input.status};await db.update(evaluations).set({record}).where(and(eq(evaluations.ownerId,ownerId),eq(evaluations.id,input.id)));return json({record});
  }
+ if(action==='deleteCriterion'){
+   if(user.role!=='SUPERADMIN')throw Error('FORBIDDEN');
+   const {id}=z.object({id:z.string().min(1).max(200)}).parse(payload);
+   const config=await configFor(ownerId),criterion=config.criteria.find(c=>c.id===id);
+   if(!criterion)return json({error:'No se encontró el parámetro.'},404);
+   if(criterion.deletedAt)return json(config);
+   const now=new Date().toISOString();
+   const next={criteria:config.criteria.map(c=>c.id===id?{...c,active:false,deletedAt:now,deletedBy:user.email}:c),factorWeights:config.factorWeights,thresholds:config.thresholds};
+   await db.insert(settings).values({ownerId,...next,updatedAt:now}).onConflictDoUpdate({target:settings.ownerId,set:{...next,updatedAt:now}});
+   return json(next);
+ }
  if(action==='saveSettings'){
-   const config=z.object({criteria:z.array(z.object({id:z.string(),code:z.string(),name:z.string(),description:z.string(),category:z.enum(['CLIENTE','PRODUCTO','CANAL','GEOGRAFIA','OPERACIONAL']),subgroup:z.string(),score:z.number().min(1).max(5),riskLevel:z.enum(['BAJO','MEDIO','ALTO','CRITICO']),mitigationFactor:z.number().min(0).max(1),active:z.boolean(),regulatoryBase:z.string(),lastUpdated:z.string()})).max(1000),factorWeights:z.array(z.object({category:z.enum(['CLIENTE','PRODUCTO','CANAL','GEOGRAFIA','OPERACIONAL']),name:z.string(),weightPercentage:z.number().min(0).max(100),description:z.string(),iconName:z.string()})).length(5),thresholds:z.array(z.object({id:z.string(),code:z.string(),title:z.string(),description:z.string(),amountARS:z.number().finite().nonnegative(),periodicity:z.enum(['POR_OPERACION','MENSUAL_ACUMULADO','ANUAL']),actionRequired:z.string(),regulationSource:z.string(),lastUpdated:z.string()})).max(100)}).parse(payload);
+   const config=z.object({criteria:z.array(z.object({id:z.string(),deletedAt:z.string().optional(),deletedBy:z.string().optional(),code:z.string(),name:z.string(),description:z.string(),category:z.enum(['CLIENTE','PRODUCTO','CANAL','GEOGRAFIA','OPERACIONAL']),subgroup:z.string(),score:z.number().min(1).max(5),riskLevel:z.enum(['BAJO','MEDIO','ALTO','CRITICO']),mitigationFactor:z.number().min(0).max(1),active:z.boolean(),regulatoryBase:z.string(),lastUpdated:z.string()})).max(1000),factorWeights:z.array(z.object({category:z.enum(['CLIENTE','PRODUCTO','CANAL','GEOGRAFIA','OPERACIONAL']),name:z.string(),weightPercentage:z.number().min(0).max(100),description:z.string(),iconName:z.string()})).length(5),thresholds:z.array(z.object({id:z.string(),code:z.string(),title:z.string(),description:z.string(),amountARS:z.number().finite().nonnegative(),periodicity:z.enum(['POR_OPERACION','MENSUAL_ACUMULADO','ANUAL']),actionRequired:z.string(),regulationSource:z.string(),lastUpdated:z.string()})).max(100)}).parse(payload);
    if(Math.abs(config.factorWeights.reduce((sum,w)=>sum+w.weightPercentage,0)-100)>.01)return json({error:'Las ponderaciones deben sumar 100%.'},400);
    const unique=(v:string[])=>new Set(v).size===v.length;
    if(!unique(config.criteria.map(c=>c.id))||!unique(config.criteria.map(c=>c.code))||!unique(config.factorWeights.map(w=>w.category))||!unique(config.thresholds.map(t=>t.id))||!unique(config.thresholds.map(t=>t.code)))return json({error:'La configuración contiene códigos o factores duplicados.'},400);
+   const previous=await configFor(ownerId);
+   const removed=previous.criteria.filter(c=>!c.deletedAt&&!config.criteria.some(n=>n.id===c.id));
+   if(removed.length&&user.role!=='SUPERADMIN')throw Error('FORBIDDEN');
+   if(config.criteria.some(c=>c.deletedAt&&!previous.criteria.find(p=>p.id===c.id)?.deletedAt))return json({error:'Usá la opción Eliminar para retirar un parámetro.'},400);
+   const archived=previous.criteria.filter(c=>c.deletedAt);
+   const now=new Date().toISOString();
+   config.criteria=[...config.criteria.filter(c=>!archived.some(a=>a.id===c.id)),...archived,...removed.map(c=>({...c,active:false,deletedAt:now,deletedBy:user.email}))];
    const row={ownerId,...config,updatedAt:new Date().toISOString()};await db.insert(settings).values(row).onConflictDoUpdate({target:settings.ownerId,set:row});return json(config);
  }
  if(action==='importLocal'){

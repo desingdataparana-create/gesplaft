@@ -8,6 +8,8 @@ export type RiskFactorCategory =
   | 'OPERACIONAL';
 
 export interface RiskCriterion {
+  deletedAt?:string;
+  deletedBy?:string;
   id: string;
   category: RiskFactorCategory;
   code: string; // e.g. "CLI-01", "PROD-03"

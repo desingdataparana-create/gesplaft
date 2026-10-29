@@ -40,6 +40,7 @@ import {
 } from '../utils/exportUtils';
 
 interface RiskParametersViewProps {
+  onDeleteCriterion?:(criterion:RiskCriterion)=>Promise<void>;
   criteria: RiskCriterion[];
   factorWeights: FactorWeight[];
   onUpdateCriteria: (criteria: RiskCriterion[]) => void;
@@ -51,6 +52,7 @@ interface RiskParametersViewProps {
 }
 
 export const RiskParametersView: React.FC<RiskParametersViewProps> = ({
+  onDeleteCriterion,
   criteria,
   factorWeights,
   onUpdateCriteria,
@@ -129,13 +131,9 @@ export const RiskParametersView: React.FC<RiskParametersViewProps> = ({
     onUpdateCriteria(updated);
   };
 
-  const handleDeleteCriterion = (id: string) => {
-    if (window.confirm('¿Confirma que desea eliminar este parámetro de la matriz de riesgo?')) {
-      const updated = criteria.filter((c) => c.id !== id);
-      onUpdateCriteria(updated);
-      setSaveNotification('Parámetro eliminado con éxito');
-      setTimeout(() => setSaveNotification(null), 3000);
-    }
+  const handleDeleteCriterion = async (id:string) => {
+    const criterion=criteria.find(c=>c.id===id);if(!criterion||!onDeleteCriterion)return;
+    await onDeleteCriterion(criterion);
   };
 
   const handleExport = (format: 'XML' | 'XLS' | 'CSV' | 'JSON') => {
@@ -608,13 +606,13 @@ export const RiskParametersView: React.FC<RiskParametersViewProps> = ({
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => handleDeleteCriterion(item.id)}
+                          {onDeleteCriterion&&<button
+                            onClick={() => void handleDeleteCriterion(item.id)}
                             className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
                             title="Eliminar parámetro"
                           >
                             <Trash2 className="w-4 h-4" />
-                          </button>
+                          </button>}
                         </div>
                       </td>
                     </tr>

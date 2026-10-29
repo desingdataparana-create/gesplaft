@@ -20,11 +20,14 @@ import {
   DollarSign,
   ArrowRight,
   ShieldCheck,
+  Trash2,
   RotateCcw
 } from 'lucide-react';
 import { EditThresholdModal } from './EditThresholdModal';
 
 interface NormativaMatrizViewProps {
+  onDeleteCriterion?:(criterion:RiskCriterion)=>Promise<void>;
+  deleting?:boolean;
   thresholds: RegulatoryThreshold[];
   onUpdateThresholds: (thresholds: RegulatoryThreshold[]) => Promise<void>;
   criteria: RiskCriterion[];
@@ -38,6 +41,7 @@ interface NormativaMatrizViewProps {
 }
 
 export const NormativaMatrizView: React.FC<NormativaMatrizViewProps> = ({
+  onDeleteCriterion,deleting=false,
   thresholds,
   onUpdateThresholds,
   criteria,
@@ -59,7 +63,7 @@ export const NormativaMatrizView: React.FC<NormativaMatrizViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<RiskFactorCategory | 'ALL'>('ALL');
 
   const [criteriaPage,setCriteriaPage]=useState(1);
-  useEffect(()=>setCriteriaPage(1),[searchTerm,selectedCategory]);
+  useEffect(()=>setCriteriaPage(1),[searchTerm,selectedCategory,criteria.length]);
 
   // Matrix interactive cell
   const [selectedCell, setSelectedCell] = useState<{ prob: number; imp: number } | null>(null);
@@ -392,9 +396,11 @@ export const NormativaMatrizView: React.FC<NormativaMatrizViewProps> = ({
                           onClick={() => onEditCriterion(criterion)}
                           className="text-slate-400 hover:text-teal-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                           title="Editar criterio"
+                          aria-label={`Editar ${criterion.name}`}
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
+                        {onDeleteCriterion&&<button type="button" disabled={deleting} onClick={()=>void onDeleteCriterion(criterion)} className="text-slate-400 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50" title="Eliminar parámetro" aria-label={`Eliminar ${criterion.name}`}><Trash2 className="w-4 h-4"/></button>}
                       </td>
                     </tr>
                   );

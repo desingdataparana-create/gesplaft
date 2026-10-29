@@ -98,6 +98,15 @@ try{
    await userApi({...grant,active:false});assert.equal((await fetch(base+'/api/data',{headers})).status,403,'deactivated identity blocked immediately');
  }
  assert.equal((await userApi({email:'privilege@example.com',name:'Invalid super',role:'SUPERADMIN',active:true,grants:{}})).status,400,'superadmin cannot be assigned through client payload');
+
+ const deleteBaseline=await call(),deleteId='qa-delete-'+Date.now();
+ await call('saveSettings',{criteria:[...deleteBaseline.data.criteria,{...deleteBaseline.data.criteria[0],id:deleteId,code:deleteId}],factorWeights:deleteBaseline.data.factorWeights,thresholds:deleteBaseline.data.thresholds});
+ const beforeDeletion=await call();
+ const deleted=await call('deleteCriterion',{id:deleteId});assert.equal(deleted.status,200);assert.equal(deleted.data.criteria.find(c=>c.id===deleteId).active,false);assert.ok(deleted.data.criteria.find(c=>c.id===deleteId).deletedAt);
+ assert.equal((await call('deleteCriterion',{id:deleteId})).status,200);assert.equal((await call('deleteCriterion',{id:'missing'})).status,404);
+ const retained=await call();assert.deepEqual(retained.data.records,beforeDeletion.data.records,'deleting criterion does not rewrite historical dossiers');
+ const stale=await call('saveSettings',{criteria:beforeDeletion.data.criteria,factorWeights:beforeDeletion.data.factorWeights,thresholds:beforeDeletion.data.thresholds});assert.equal(stale.data.criteria.find(c=>c.id===deleteId).active,false,'deleted marker preserved by stale saves');
+ console.log('PASS: superadmin criterion deletion, logical archive, idempotence and historical preservation.');
  console.log('PASS: four roles, shared organization, per-module server permissions, read-only access, privilege escalation rejection, revoked grants, deactivation and dashboard aggregates.');
  console.log('PASS: separate subject registration, canonical personal conditions and risk criteria, immutable historical snapshots, documented EBR review, justified closure, unusual-to-suspicious analysis, ROS reference without transmission, versioned audit trail,  independent dossiers per operation, existing subject by ID only, per-operation condition review, unchanged master identity, contact persistence, normalized duplicate protection, historical snapshots, search, status, settings, validation, identity isolation and CSRF. Local test data only.');
 }catch(e){console.error(e);console.error(log.slice(-2500));process.exitCode=1;}finally{rmSync('dist/server/.dev.vars',{force:true});try{process.kill(-server.pid,'SIGTERM')}catch{}server.stdout.destroy();server.stderr.destroy();}

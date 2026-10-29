@@ -181,6 +181,13 @@ export default function App() {
     }
   };
 
+  const handleDeleteCriterion = async (criterion:RiskCriterion) => {
+    if(user?.role!=='SUPERADMIN'||!window.confirm(`¿Eliminar el parámetro «${criterion.name}»? Dejará de estar disponible para nuevas evaluaciones. Los expedientes anteriores conservarán sus datos.`))return;
+    setSaving(true);setServerError('');
+    try{const next=await request<{criteria:RiskCriterion[];factorWeights:FactorWeight[];thresholds:RegulatoryThreshold[]}>('deleteCriterion',{id:criterion.id});setCriteria(next.criteria);setFactorWeights(next.factorWeights);setThresholds(next.thresholds);}
+    catch(e){setServerError((e as Error).message);}finally{setSaving(false);}
+  };
+
   const handleSaveCriterion = async (criterion:RiskCriterion) => {
     const next = criteria.some(c=>c.id===criterion.id) ? criteria.map(c=>c.id===criterion.id?criterion:c) : [criterion,...criteria];
     await saveConfig({criteria:next});setEditingCriterion(null);
@@ -268,9 +275,11 @@ export default function App() {
 
         {loaded && !loading && allow('riesgo') && (currentTab === 'normativa' || currentTab === 'parametros' || currentTab === 'matriz' || currentTab === 'umbrales') && (
           <fieldset disabled={!allow('riesgo',true)}><NormativaMatrizView
+            onDeleteCriterion={user?.role==='SUPERADMIN'?handleDeleteCriterion:undefined}
+            deleting={saving}
             thresholds={thresholds}
             onUpdateThresholds={next=>saveConfig({thresholds:next})}
-            criteria={criteria}
+            criteria={criteria.filter(c=>!c.deletedAt)}
             factorWeights={factorWeights}
             onUpdateCriteria={next=>{void saveConfig({criteria:next}).catch(()=>{})}}
             onUpdateWeights={next=>{void saveConfig({factorWeights:next}).catch(()=>{})}}

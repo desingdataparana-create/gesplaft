@@ -38,3 +38,7 @@ Falta validar PostgreSQL externo, respaldos/restauración, TLS, PM2, Nginx y tod
 El listado y la búsqueda se realizan sobre el conjunto del usuario/organización; el paginado actual es visual. Para volúmenes productivos se requieren consultas paginadas e índices normalizados adicionales. Los expedientes anteriores a las copias históricas no permiten recuperar una versión de metodología inexistente.
 
 Los cambios de configuración y de permisos siguen la última escritura válida; los expedientes y fichas disponen de controles de versión en sus flujos críticos. La serialización de PostgreSQL se valida contra PostgreSQL externo en pruebas; el motor embebido no ejercita el bloqueo asesor de red.
+
+## Eliminación de parámetros
+
+Solo el superadministrador puede eliminar criterios. Se registra una baja lógica con fecha y usuario, sin modificar expedientes históricos. Guardar una configuración anterior no restaura un criterio eliminado. También se impide eludir el permiso retirándolo de la lista enviada a `saveSettings`.

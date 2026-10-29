@@ -1,6 +1,0 @@
-{
-  "name": "IAFAS - Parámetros y Matriz de Riesgo PLA/FT",
-  "description": "Sistema de gestión de parámetros de riesgo, matriz de evaluación PLA/FT, scoring ponderado, monitoreo de alertas y debida diligencia institucional para IAFAS.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

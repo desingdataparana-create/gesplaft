@@ -1,0 +1,26 @@
+{
+  "sourceRepository": "desingdataparana-create/gesplaft",
+  "sourceCommit": "95dcd0971c2f715b8119efe29c1dade34118b246",
+  "sourceSiteCommit": "49b40cd8ade92529fc7d34efc57450df02053320",
+  "files": {
+    "package.json": "d8b20dd66c6c9c5a1b7ec6fbe179a2e394d7f52313b64f6618b5d6a80e1a2d46",
+    ".gitignore": "55599b1bc9a896a1c2ca96c208a854b038c73baa1dff4a24917e2d38bd653d07",
+    "README.md": "a0557c5574e9d9936ec8f446d94c75133c1de6b971abe1b49f08de305ba1d5e1",
+    ".env.example": "3dc84d668f4ac118b6ed0ac03f3149f8f884c0bd921d6b5dfc6fc0fd2be6d6c2",
+    "deploy/ecosystem.config.cjs": "ff4ac4d946ca497672a11fac03af7e41be1750d3987e02f55ba66f8529836838",
+    "deploy/nginx-location.conf": "2fa6799b5c0fbe0f5f688bc0a5a11fcae068a29f54b8c51d49500d45d0664ccc",
+    "scripts/verify-runtime.mjs": "dd705297ddcbc5085f6044beb2e86aba7720f15a8c8d0bb1c4e5921abc3f69e4",
+    "scripts/test-vps.mjs": "41af1430de556aa397d9a74477574e6ce8896671edca851163d6462607ef3c8e",
+    "portable/auth.mjs": "421013ed91b135cf242d578d21819d8734120da1ba24bc7955f96340707f96ea",
+    "portable/admin.mjs": "93942b300d7d97dcf5645de71f44d9dd36fa6efa6bc2aceafb111a55eb867d8c",
+    "portable/migrate.mjs": "65f30231287df761e909d3544bd23ee5ad18c4a0ef7a8853fee888109809e164",
+    "portable/schema.sql": "8a1a1ca278a3bc97bab8d5ae06e237f91bc70b1469a4b7cf305abab0ba3ac230",
+    "dist-vps/server/db.mjs": "d870d72a260a3de0a81a4340453400c5327c2307ddb1ab2a1f1b83d2c9be0ca3",
+    "dist-vps/server/server.mjs": "8a1510e713d6a41b15e9973e4691e6119f3b59bcb4d9e5770bc1f26d6a841b20",
+    "dist-vps/server/chunk-GOGXSPHE.mjs": "9faa9c420d3a99d8e0f6809dc5bb4104f9914b7ffffc0cd745484171c5564d56",
+    "dist-vps/client/index.html": "45973600a8f41486a50c847a5daa69d163bed3ee83f2dffbc0d0af7e3aac00c6",
+    "dist-vps/client/assets/index-BD3L6fnB.js": "dcf34a6fc10306042acefdfcdf0f0d18cd45df33b24c5b69c80e3a89eabd1392",
+    "dist-vps/client/assets/index-D0G9JZDc.css": "4595d706b29f346659a07a02e132a86a4a0092daea2a3785d89fe0aa378cdac4",
+    "package-lock.json": "68d02ed8cb967e23b0407fc9b1a5c3928590432d08fa6e2a112a616273d40360"
+  }
+}

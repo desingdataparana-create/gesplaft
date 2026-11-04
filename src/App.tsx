@@ -1,4 +1,5 @@
 'use client';
+import { simplifyRiskConfiguration } from './utils/riskConfiguration';
 import {sitePath,passwordAuth} from './utils/paths';
 
 import {can,type AccessUser} from './access';
@@ -67,7 +68,7 @@ export default function App() {
     try {
       if(items===legacyRecords && records.length===0){
         const oldConfig={criteria:JSON.parse(localStorage.getItem('iafas_risk_criteria') || 'null') || criteria,factorWeights:JSON.parse(localStorage.getItem('iafas_factor_weights') || 'null') || factorWeights,thresholds:JSON.parse(localStorage.getItem('iafas_thresholds') || 'null') || thresholds};
-        await request('saveSettings',oldConfig);
+        await request('saveSettings',simplifyRiskConfiguration(oldConfig));
       }
       await request('importLocal',{records:items}); await loadState();setLegacyRecords([]); }
     catch(e){setServerError((e as Error).message);}finally{setSaving(false);}
@@ -145,9 +146,7 @@ export default function App() {
       } else if (hash.includes('simulador') || hash.includes('evaluacion')) {
         setCurrentTab('monitoreo');
         setIsNewEvaluationModalOpen(true);
-        if(hash.includes('dashboard')||!hash){setCurrentTab('dashboard');setIsNewEvaluationModalOpen(false);
-      } else if(hash.includes('usuarios')){setCurrentTab('usuarios');setIsNewEvaluationModalOpen(false);
-      } else if (hash.includes('simulador')) window.history.replaceState(null, '', '#/evaluacion/');
+        if(hash.includes('simulador')) window.history.replaceState(null, '', '#/evaluacion/');
       } else if (hash.includes('ajustes')) {
         setCurrentTab('ajustes');setIsNewEvaluationModalOpen(false);
       } else if (hash.includes('sujetos')) {
@@ -199,7 +198,7 @@ export default function App() {
   };
 
   const handleResetDefaults = () => {
-    if(window.confirm('¿Restablecer criterios, ponderaciones y umbrales a los valores de ejemplo?'))void saveConfig({criteria:INITIAL_RISK_CRITERIA,factorWeights:INITIAL_FACTOR_WEIGHTS,thresholds:INITIAL_REGULATORY_THRESHOLDS}).catch(()=>{});
+    if(window.confirm('¿Restablecer criterios, ponderaciones y piso UIF a los valores de ejemplo?'))void saveConfig({criteria:INITIAL_RISK_CRITERIA,factorWeights:INITIAL_FACTOR_WEIGHTS,thresholds:INITIAL_REGULATORY_THRESHOLDS}).catch(()=>{});
   };
   const handleSaveEvaluation = async (record:EvaluationRecord):Promise<EvaluationRecord> => {
     const payload={subjectId:record.subjectId,requestId:record.id,record};

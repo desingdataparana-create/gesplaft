@@ -1,6 +1,7 @@
+import { simplifyRiskConfiguration } from '../utils/riskConfiguration';
 import { RiskCriterion, FactorWeight, RegulatoryThreshold, EvaluationRecord } from '../types';
 
-export const INITIAL_FACTOR_WEIGHTS: FactorWeight[] = [
+const LEGACY_FACTOR_WEIGHTS: FactorWeight[] = [
   {
     category: 'CLIENTE',
     name: 'Factor Clientes / Apostadores',
@@ -38,7 +39,7 @@ export const INITIAL_FACTOR_WEIGHTS: FactorWeight[] = [
   },
 ];
 
-export const INITIAL_RISK_CRITERIA: RiskCriterion[] = [
+const LEGACY_RISK_CRITERIA: RiskCriterion[] = [
   // --- FACTOR CLIENTES (CLI) ---
   {
     id: 'cli-01',
@@ -428,7 +429,7 @@ export const INITIAL_RISK_CRITERIA: RiskCriterion[] = [
   }
 ];
 
-export const INITIAL_REGULATORY_THRESHOLDS: RegulatoryThreshold[] = [
+const LEGACY_REGULATORY_THRESHOLDS: RegulatoryThreshold[] = [
   {
     id: 'thresh-01',
     code: 'UMB-ID-01',
@@ -474,6 +475,11 @@ export const INITIAL_REGULATORY_THRESHOLDS: RegulatoryThreshold[] = [
     lastUpdated: '2026-01-02',
   },
 ];
+
+const simplified = simplifyRiskConfiguration({criteria: LEGACY_RISK_CRITERIA, factorWeights: LEGACY_FACTOR_WEIGHTS, thresholds: LEGACY_REGULATORY_THRESHOLDS});
+export const INITIAL_RISK_CRITERIA = simplified.criteria;
+export const INITIAL_FACTOR_WEIGHTS = simplified.factorWeights;
+export const INITIAL_REGULATORY_THRESHOLDS = simplified.thresholds;
 
 export const INITIAL_EVALUATION_RECORDS: EvaluationRecord[] = [
   {

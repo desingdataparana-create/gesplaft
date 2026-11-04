@@ -92,7 +92,7 @@ export const AddParameterModal: React.FC<AddParameterModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/30 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl sm:rounded-xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto flex flex-col max-h-[94vh] sm:max-h-[90vh]">
-        
+
         {/* Modal Header */}
         <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white">
           <div className="flex items-center gap-2.5">
@@ -118,7 +118,7 @@ export const AddParameterModal: React.FC<AddParameterModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
           <div className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm overflow-y-auto flex-1">
-            
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Factor de Riesgo</label>
@@ -138,7 +138,7 @@ export const AddParameterModal: React.FC<AddParameterModalProps> = ({
                   <option value="PRODUCTO">Factor Producto / Juego</option>
                   <option value="CANAL">Factor Canal de Distribución</option>
                   <option value="GEOGRAFIA">Factor Zona Geográfica</option>
-                  <option value="OPERACIONAL">Factor Operacional / Transaccional</option>
+
                 </select>
               </div>
 

@@ -19,7 +19,6 @@ export const EditThresholdModal: React.FC<EditThresholdModalProps> = ({
   const [actionRequired, setActionRequired] = useState('');
   const [description, setDescription] = useState('');
   const [regulationSource, setRegulatorySource] = useState('');
-  const [periodicity, setPeriodicity] = useState<RegulatoryThreshold['periodicity']>('POR_OPERACION');
 
   const [saveError,setSaveError]=useState('');
   const [saveBusy,setSaveBusy]=useState(false);
@@ -30,7 +29,6 @@ export const EditThresholdModal: React.FC<EditThresholdModalProps> = ({
       setActionRequired(threshold.actionRequired);
       setDescription(threshold.description);
       setRegulatorySource(threshold.regulationSource);
-      setPeriodicity(threshold.periodicity);
     }
   }, [threshold, isOpen]);
 
@@ -49,7 +47,7 @@ export const EditThresholdModal: React.FC<EditThresholdModalProps> = ({
       actionRequired,
       description,
       regulationSource,
-      periodicity,
+      periodicity:'POR_OPERACION',
       lastUpdated: new Date().toISOString().slice(0, 10),
     };
 
@@ -69,7 +67,7 @@ export const EditThresholdModal: React.FC<EditThresholdModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900">
-                Actualizar Umbral UIF
+                Actualizar piso UIF
               </h3>
               <p className="text-xs text-slate-400 font-mono">
                 {threshold.code} • {threshold.title}
@@ -91,13 +89,14 @@ export const EditThresholdModal: React.FC<EditThresholdModalProps> = ({
           
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Monto Límite en Pesos Argentinos ($ ARS)
+              Piso UIF en pesos argentinos ($ ARS)
             </label>
             <div className="relative">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-base">$</span>
               <input
                 type="number"
-                step="50000"
+                min="0.01"
+                step="0.01"
                 value={amountARS}
                 onChange={(e) => setAmountARS(Number(e.target.value))}
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-base font-bold text-slate-900 focus:bg-white focus:outline-hidden focus:border-teal-500"
@@ -109,46 +108,11 @@ export const EditThresholdModal: React.FC<EditThresholdModalProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Cómputo / Periodicidad
-            </label>
-            <select
-              value={periodicity}
-              onChange={(e) => setPeriodicity(e.target.value as any)}
-              className="w-full py-2.5 px-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 font-medium focus:bg-white focus:outline-hidden focus:border-teal-500"
-            >
-              <option value="POR_OPERACION">Por Operación Individual</option>
-              <option value="MENSUAL_ACUMULADO">Acumulado Mensual por Sujeto</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Medida Obligatoria Exigida
-            </label>
-            <textarea
-              rows={2}
-              value={actionRequired}
-              onChange={(e) => setActionRequired(e.target.value)}
-              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:bg-white focus:outline-hidden focus:border-teal-500 text-xs sm:text-sm"
-              placeholder="Ej. Declaración jurada de licitud y origen de fondos con respaldo documental..."
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Resolución UIF de Respaldo
-            </label>
-            <input
-              type="text"
-              value={regulationSource}
-              onChange={(e) => setRegulatorySource(e.target.value)}
-              className="w-full py-2 px-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:bg-white focus:outline-hidden focus:border-teal-500 text-xs font-mono"
-              placeholder="Res. UIF 194/2023 - Art. 19"
-            />
-          </div>
+          <details className="surface p-3 space-y-3"><summary className="text-xs text-teal-700">Referencia y alcance</summary>
+            <label className="field-label">Fuente normativa<input value={regulationSource} onChange={e=>setRegulatorySource(e.target.value)}/></label>
+            <label className="field-label">Alcance<textarea rows={2} value={description} onChange={e=>setDescription(e.target.value)}/></label>
+            <label className="field-label">Acción requerida<textarea rows={2} value={actionRequired} onChange={e=>setActionRequired(e.target.value)}/></label>
+          </details>
 
           <div className="p-3 bg-teal-50 rounded-xl border border-teal-100 flex items-start gap-2.5 text-xs text-teal-900">
             <Info className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
@@ -173,7 +137,7 @@ export const EditThresholdModal: React.FC<EditThresholdModalProps> = ({
               className="px-5 py-2.5 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
             >
               <Save className="w-4 h-4" />
-              <span>Guardar Umbral</span>
+              <span>Guardar piso UIF</span>
             </button>
           </div>
 

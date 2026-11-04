@@ -1,21 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  RiskCriterion, 
-  FactorWeight, 
-  RegulatoryThreshold, 
-  RiskFactorCategory, 
-  RiskLevel 
+import {
+  RiskCriterion,
+  FactorWeight,
+  RegulatoryThreshold,
+  RiskFactorCategory,
+  RiskLevel
 } from '../types';
-import { 
-  Scale, 
-  Grid3X3, 
-  SlidersHorizontal, 
-  Search, 
-  Edit3, 
-  Check, 
-  Plus, 
-  Download, 
-  FileText, 
+import {
+  Scale,
+  Grid3X3,
+  SlidersHorizontal,
+  Search,
+  Edit3,
+  Check,
+  Plus,
+  Download,
+  FileText,
   Info,
   DollarSign,
   ArrowRight,
@@ -117,7 +117,7 @@ export const NormativaMatrizView: React.FC<NormativaMatrizViewProps> = ({
   // Filtered criteria list
   const filteredCriteria = criteria.filter((item) => {
     const matchesCategory = selectedCategory === 'ALL' || item.category === selectedCategory;
-    const matchesSearch = 
+    const matchesSearch =
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -127,8 +127,8 @@ export const NormativaMatrizView: React.FC<NormativaMatrizViewProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto w-full">
-      <div className="page-heading"><div><h1>Configuración</h1><p>Criterios, umbrales y matriz de evaluación.</p></div></div>
-      <nav aria-label="Secciones de configuración" className="flex gap-5 border-b border-slate-200 overflow-x-auto">{([['CRITERIOS','Criterios'],['UMBRALES','Umbrales'],['MATRIZ','Matriz']] as const).map(([id,label])=><button key={id} aria-current={activeTab===id?'page':undefined} onClick={()=>setActiveTab(id)} className={`text-sm py-3 whitespace-nowrap border-b-2 ${activeTab===id?'border-teal-700 text-teal-700 font-medium':'border-transparent text-slate-400'}`}>{label}</button>)}</nav>
+      <div className="page-heading"><div><h1>Configuración</h1><p>Criterios, piso UIF y matriz de evaluación.</p></div></div>
+      <nav aria-label="Secciones de configuración" className="flex gap-5 border-b border-slate-200 overflow-x-auto">{([['CRITERIOS','Criterios'],['UMBRALES','Piso UIF'],['MATRIZ','Matriz']] as const).map(([id,label])=><button key={id} aria-current={activeTab===id?'page':undefined} onClick={()=>setActiveTab(id)} className={`text-sm py-3 whitespace-nowrap border-b-2 ${activeTab===id?'border-teal-700 text-teal-700 font-medium':'border-transparent text-slate-400'}`}>{label}</button>)}</nav>
 
       {/* SUB-VIEW 1: UMBRALES REGULATORIOS UIF */}
       {activeTab === 'UMBRALES' && (
@@ -155,7 +155,7 @@ export const NormativaMatrizView: React.FC<NormativaMatrizViewProps> = ({
             <h2 className="text-base font-bold text-slate-900 mb-4">
               Ponderación de Factores de Riesgo PLA/FT (Total: 100%)
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
               {factorWeights.map((fw) => (
                 <div key={fw.category} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                   <div className="text-xs text-slate-500 font-bold uppercase tracking-wider">{fw.name}</div>
@@ -338,7 +338,7 @@ export const NormativaMatrizView: React.FC<NormativaMatrizViewProps> = ({
                 <option value="PRODUCTO">Factor Producto</option>
                 <option value="CANAL">Factor Canal</option>
                 <option value="GEOGRAFIA">Factor Geografía</option>
-                <option value="OPERACIONAL">Factor Operacional</option>
+
               </select>
             </div>
 

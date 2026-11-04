@@ -1,5 +1,44 @@
-import {build} from 'esbuild';import assert from 'node:assert/strict';import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
-const dir=await mkdtemp(join(tmpdir(),'gesplaft-unit-'));try{const file=join(dir,'logic.mjs');await build({stdin:{contents:`export * from './src/utils/calculateRisk';export * from './src/utils/exportUtils';export * from './src/data/initialRiskData';export * from './src/access';`,resolveDir:process.cwd()},outfile:file,bundle:true,format:'esm',platform:'node'});const x=await import(file),ids=['cli-01','prod-01','can-01','geo-01'];const thresholds=x.INITIAL_REGULATORY_THRESHOLDS.map(t=>({...t,amountARS:t.code==='UMB-ID-01'?100:t.code==='UMB-DJOF-02'?1000:1e10}));const run=(amount,ts=thresholds,context={})=>x.calculateRisk(x.INITIAL_RISK_CRITERIA,x.INITIAL_FACTOR_WEIGHTS,ids,false,amount,ts,context);
-assert.equal(run(99).requiresDocumentation,false);assert.equal(run(100).requiresDocumentation,true);assert.equal(run(999).requiresDJOF,false);assert.equal(run(1000).requiresDJOF,true);const r={id:'qa',operationAt:'2026-10-12T15:00:00Z',timestamp:'2026-11-02T10:00:00Z',amountARS:600,channelName:'Sala A',subjectName:'=HYPERLINK("evil")',taxId:'00000001',selectedCriteriaIds:ids,riskLevel:'BAJO',status:'PENDIENTE',weightedScore:20,operationType:'COBRO_PREMIO',dueDiligenceLevel:'SIMPLIFICADA'};
-assert.equal(run(400,thresholds,{operationAt:'2026-10-30T15:00:00Z',records:[r]}).requiresDJOF,true);assert.equal(run(400,thresholds,{operationAt:'2026-11-01T15:00:00Z',records:[r]}).requiresDJOF,false);assert.equal(x.businessDate('2026-11-01T01:00:00Z'),'2026-10-31');assert.equal(run(1000,thresholds.map(t=>({...t,amountARS:1e15}))).requiresDJOF,false);assert.equal(x.filterRecordsByPeriod([r],{startDate:'2026-10-01',endDate:'2026-10-31'}).length,1);assert.equal(x.filterRecordsByPeriod([r],{channel:'Sala B'}).length,0);assert.match(x.generateRecordsCSV([r]),/"'=HYPERLINK/);
-for(const role of x.ROLES){const u={role,active:true,grants:{sujetos:'read'}};assert.equal(x.can(u,'sujetos'),true);assert.equal(x.can(u,'sujetos',true),role==='SUPERADMIN');assert.equal(x.can({...u,active:false},'sujetos'),false);}console.log('PASS: umbrales, acumulados, zona horaria argentina, fechas, canal, CSV y permisos.');}finally{await rm(dir,{recursive:true,force:true});}
+import {build} from 'esbuild';
+import assert from 'node:assert/strict';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+const dir=await mkdtemp(join(tmpdir(),'gesplaft-unit-'));
+try {
+  const file=join(dir,'logic.mjs');
+  await build({stdin:{contents:`export * from './src/utils/calculateRisk';export * from './src/utils/riskConfiguration';export * from './src/utils/exportUtils';export * from './src/data/initialRiskData';export * from './src/access';`,resolveDir:process.cwd()},outfile:file,bundle:true,format:'esm',platform:'node'});
+  const x=await import(file),ids=['cli-01','prod-01','can-01','geo-01'];
+  const floor={...x.INITIAL_REGULATORY_THRESHOLDS[0],amountARS:100};
+  const run=(amount,ts=[floor],context={})=>x.calculateRisk(x.INITIAL_RISK_CRITERIA,x.INITIAL_FACTOR_WEIGHTS,ids,false,amount,ts,context);
+  assert.equal(x.INITIAL_FACTOR_WEIGHTS.length,4);
+  assert.equal(x.INITIAL_FACTOR_WEIGHTS.reduce((n,w)=>n+w.weightPercentage,0),100);
+  assert.equal(x.INITIAL_RISK_CRITERIA.some(c=>c.category==='OPERACIONAL'),false);
+  assert.deepEqual(x.INITIAL_REGULATORY_THRESHOLDS.map(t=>t.code),['UMB-ID-01']);
+  assert.equal(run(99.99).requiresDocumentation,false);
+  assert.equal(run(100).requiresDocumentation,true);
+  assert.equal(run(100.01).requiresDocumentation,true);
+  assert.equal(run(100000000).requiresDJOF,false,'amount alone does not invent another threshold');
+  const historical={id:'qa',operationAt:'2026-10-12T15:00:00Z',timestamp:'2026-11-02T10:00:00Z',amountARS:600,channelName:'Sala A',subjectName:'=HYPERLINK("evil")',taxId:'00000001',selectedCriteriaIds:ids,riskLevel:'BAJO',status:'PENDIENTE',weightedScore:20,operationType:'COBRO_PREMIO',dueDiligenceLevel:'SIMPLIFICADA'};
+  assert.equal(run(40,[floor],{operationAt:'2026-10-30T15:00:00Z',records:[historical]}).requiresDocumentation,false,'floor is per operation');
+  const legacyThresholds=[floor,{...floor,id:'djof',code:'UMB-DJOF-02',amountARS:1},{...floor,id:'ros',code:'UMB-ROS-03',amountARS:1}];
+  assert.equal(run(40,legacyThresholds).thresholdChecks.length,1);
+  assert.equal(run(40,legacyThresholds).alerts.length,0);
+  const signal={...x.INITIAL_RISK_CRITERIA[0],id:'oper-04',category:'OPERACIONAL',score:5};
+  const legacy={criteria:[...x.INITIAL_RISK_CRITERIA,signal],factorWeights:[...x.INITIAL_FACTOR_WEIGHTS.map(w=>({...w,weightPercentage:w.weightPercentage*.9})),{category:'OPERACIONAL',weightPercentage:10}],thresholds:legacyThresholds};
+  const before=JSON.stringify(legacy),simplified=x.simplifyRiskConfiguration(legacy);
+  assert.equal(JSON.stringify(legacy),before,'normalization does not mutate stored legacy config');
+  assert.equal(simplified.factorWeights.reduce((n,w)=>n+w.weightPercentage,0),100);
+  assert.deepEqual(x.simplifyRiskConfiguration(simplified),simplified,'normalization is idempotent');
+  const calculated=x.calculateRisk(legacy.criteria,legacy.factorWeights,[...ids,'oper-04'],false,40,legacyThresholds);
+  assert.equal(calculated.weightedScore,run(40).weightedScore);
+  assert.equal(calculated.riskLevel,run(40).riskLevel);
+  assert.equal(calculated.alerts.length,0,'retired signals have no hidden effect');
+  const pep=x.calculateRisk(simplified.criteria,simplified.factorWeights,ids,true,40,[floor]);
+  assert.equal(pep.riskLevel,'ALTO');assert.equal(pep.dueDiligence,'REFORZADA');
+  assert.equal(x.businessDate('2026-11-01T01:00:00Z'),'2026-10-31');
+  assert.equal(x.filterRecordsByPeriod([historical],{startDate:'2026-10-01',endDate:'2026-10-31'}).length,1);
+  assert.equal(x.filterRecordsByPeriod([historical],{channel:'Sala B'}).length,0);
+  assert.match(x.generateRecordsCSV([historical]),/"'=HYPERLINK/);
+  for(const role of x.ROLES){const u={role,active:true,grants:{sujetos:'read'}};assert.equal(x.can(u,'sujetos'),true);assert.equal(x.can(u,'sujetos',true),role==='SUPERADMIN');assert.equal(x.can({...u,active:false},'sujetos'),false);}
+  console.log('PASS: piso UIF, límites decimales, configuración anterior, cuatro factores, PEP, fechas, CSV y permisos.');
+} finally {await rm(dir,{recursive:true,force:true});}

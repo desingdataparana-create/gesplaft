@@ -6,7 +6,7 @@ import {
   RiskCriterion, 
   FactorWeight, 
   EvaluationRecord, 
-  RiskLevel, Subject, ProfileAssessment
+  RiskLevel, Subject
 } from '../types';
 import { 
   X,
@@ -52,8 +52,6 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   onViewDossier,
   initialSubjectData,
 }) => {
-  const emptyProfile:ProfileAssessment={profileSummary:'',comparison:'SIN_DATOS',comparisonReason:'',originDeclared:'',destinationDeclared:'',beneficialOwner:''};
-  const [profileAssessment,setProfileAssessment]=useState<ProfileAssessment>(emptyProfile);
   const [criterionCategory,setCriterionCategory]=useState<RiskCriterion['category']>('PRODUCTO');
   const [operationDate,setOperationDate]=useState('');
   const [conditionConfirmed,setConditionConfirmed]=useState(false);
@@ -68,7 +66,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const selectSubject = (subject:Subject) => {
     setSelectedCriteriaIds(prev=>[...prev.filter(id=>criteria.find(c=>c.id===id)?.category!=='CLIENTE'),...(subject.clientCriteriaIds||[])]);
-    if(subjectId!==subject.id)setProfileAssessment(emptyProfile);setConditionConfirmed(false);
+    setConditionConfirmed(false);
     setSubjectUpdatedAt(subject.updatedAt);setSubjectId(subject.id);setSubjectName(subject.subjectName);setTaxId(subject.taxId);setSubjectType(subject.subjectType);setActivity(subject.activity);setIsPep(subject.pepStatus);setPepDetails(subject.pepDetails || '');setAddress(subject.address);setEmail(subject.email);setPhone(subject.phone);setValidationError('');
   };
 
@@ -94,7 +92,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   const resetForm = () => {
     setRequestId(crypto.randomUUID());setSubjectUpdatedAt(initialSubjectData?.updatedAt);
     setEditingSubject(null);
-    setCriterionCategory('PRODUCTO');setProfileAssessment(emptyProfile);setOperationDate(currentLocalDate());setConditionConfirmed(false);
+    setCriterionCategory('PRODUCTO');setOperationDate(currentLocalDate());setConditionConfirmed(false);
     setSubjectId(initialSubjectData?.id || '');
     setAddress(initialSubjectData?.address || '');setEmail(initialSubjectData?.email || '');setPhone(initialSubjectData?.phone || '');
 
@@ -116,7 +114,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     setRequestId(crypto.randomUUID());
     setSubjectId(savedRecord.subjectId || '');
     setAmountARS(0);setDepartment('');setChannelName('');setNotes('');setSelectedCriteriaIds(prev=>prev.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE'));
-    setCriterionCategory('PRODUCTO');setProfileAssessment(emptyProfile);setOperationDate(currentLocalDate());setConditionConfirmed(false);setSavedRecord(null);setValidationError('');
+    setCriterionCategory('PRODUCTO');setOperationDate(currentLocalDate());setConditionConfirmed(false);setSavedRecord(null);setValidationError('');
   };
 
   // Toggle criterion selection
@@ -140,6 +138,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     if(!subjectId){setValidationError('Seleccioná un sujeto registrado o creá su ficha con «Nuevo sujeto».');return;}
     if(!department.trim() || !channelName.trim() || !Number.isFinite(amountARS) || amountARS<=0){setValidationError('Completá departamento, sala y un monto mayor a cero.');return;}
     if(!selectedCriteriaIds.some(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')){setValidationError('Completá los factores personales desde «Editar ficha del sujeto».');return;}
+    if(['PRODUCTO','CANAL','GEOGRAFIA'].some(category=>!criteria.some(c=>c.active&&c.category===category&&selectedCriteriaIds.includes(c.id)))){setValidationError('Seleccioná al menos un factor de producto, canal y geografía.');return;}
     if(!conditionConfirmed){setValidationError('Confirmá la condición del sujeto para esta operación.');return;}
     if(isPep && !pepDetails.trim()){setValidationError('Indicá el cargo o condición PEP evaluada.');return;}
     if(!operationDate || !Number.isFinite(new Date(operationDate).getTime())){setValidationError('Indicá la fecha y hora de la operación.');return;}
@@ -149,7 +148,6 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
 
     const newRecord: EvaluationRecord = {
       subjectUpdatedAt,
-      profileAssessment,
       operationAt:new Date(operationDate).toISOString(),
       activityAtOperation:activity,
       conditionConfirmed,
@@ -188,14 +186,14 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     finally{setIsSaving(false);}
   };
 
-  const currentThresholdStatus={text:requiresDJOF?'Requiere DJOF':requiresDocumentation?'Requiere documentación':'Verificar umbrales configurados',color:requiresDocumentation?'text-amber-800 bg-amber-50 border-amber-200':'text-slate-700 bg-slate-100 border-slate-200'};
+  const currentThresholdStatus={text:requiresDJOF?'Requiere DJOF':requiresDocumentation?'Requiere documentación':'Por debajo del piso UIF',color:requiresDocumentation?'text-amber-800 bg-amber-50 border-amber-200':'text-slate-700 bg-slate-100 border-slate-200'};
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/30 overflow-y-auto">
       {canEditSubject&&editingSubject&&<SubjectEditor criteria={criteria} initial={editingSubject} onClose={()=>setEditingSubject(null)} onSave={async data=>{const saved=await onSaveSubject(data);selectSubject(saved);setEditingSubject(null)}}/>}
-      <div role="dialog" aria-modal={!editingSubject} aria-hidden={!!editingSubject} inert={!!editingSubject} aria-label="Nueva operación" className="w-full max-w-5xl bg-white rounded-2xl sm:rounded-xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh] my-auto">
+      <div role="dialog" aria-modal={!editingSubject} aria-hidden={!!editingSubject} inert={!!editingSubject} aria-label="Nuevo expediente" className="w-full max-w-5xl bg-white rounded-2xl sm:rounded-xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh] my-auto">
         
         {/* Sticky Header */}
         <div className="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
@@ -206,7 +204,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
-                  Nueva operación
+                  Nuevo expediente
                 </h3>
               </div>
               <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
@@ -293,10 +291,10 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <SubjectNameField value={subjectName} linked={!!subjectId} onSelect={selectSubject} onChange={name=>{
                       setSubjectName(name);
-                      if(subjectId){setSubjectId('');setSubjectType('PERSONA_FISICA');setTaxId('');setAddress('');setEmail('');setPhone('');setActivity('');setIsPep(false);setPepDetails('');setSelectedCriteriaIds([]);setProfileAssessment(emptyProfile);setConditionConfirmed(false);}
+                      if(subjectId){setSubjectId('');setSubjectType('PERSONA_FISICA');setTaxId('');setAddress('');setEmail('');setPhone('');setActivity('');setIsPep(false);setPepDetails('');setSelectedCriteriaIds([]);setConditionConfirmed(false);}
                     }}/>
                     {subjectId&&<div className="sm:col-span-2 text-xs text-slate-500"><span className="font-medium text-teal-700">Ficha vinculada · {taxId}</span><details className="mt-2"><summary>Ver datos personales</summary><div className="mt-2 space-y-1"><p>{address||'Dirección pendiente'}</p><p>{email||'Correo pendiente'}</p><p>{phone||'Teléfono pendiente'}</p></div></details></div>}
-                    {canEditSubject&&<div className="sm:col-span-2 flex gap-3"><button type="button" className="text-xs font-medium text-teal-700" onClick={()=>setEditingSubject(subjectId?{id:subjectId,updatedAt:subjectUpdatedAt,subjectName,taxId,subjectType,address,email,phone,activity,pepStatus:isPep,pepDetails,clientCriteriaIds:selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')}:{subjectName})}>{subjectId?'Editar ficha del sujeto':'Nuevo sujeto'}</button></div>}
+                    {canEditSubject&&<div className="sm:col-span-2 flex flex-wrap gap-2"><button type="button" className="button-secondary" onClick={()=>setEditingSubject({subjectName:subjectId?'':subjectName})}><Plus size={15}/>Nuevo sujeto</button>{subjectId&&<button type="button" className="button-secondary" onClick={()=>setEditingSubject({id:subjectId,updatedAt:subjectUpdatedAt,subjectName,taxId,subjectType,address,email,phone,activity,pepStatus:isPep,pepDetails,clientCriteriaIds:selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')})}>Editar ficha</button>}</div>}
                     <label className="field-label sm:col-span-2">Fecha y hora de la operación<input aria-label="Fecha y hora de la operación" type="datetime-local" value={operationDate} onChange={e=>setOperationDate(e.target.value)}/></label>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">Tipo de Operación</label>
@@ -319,7 +317,8 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
                         <input
                           type="number"
-                          step="100000"
+                          min="0.01"
+                          step="0.01"
                           value={amountARS}
                           onChange={(e) => setAmountARS(Number(e.target.value))}
                           className="w-full py-2 pl-8 pr-3 bg-white border border-slate-300 rounded-xl font-mono text-sm font-bold focus:outline-hidden focus:border-teal-500"
@@ -336,11 +335,6 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
 
                   {subjectId&&<div className="text-xs text-slate-600 bg-white border border-slate-200 rounded-lg p-3 space-y-1"><p>Tipo: {subjectType==='PERSONA_FISICA'?'Persona física':subjectType==='PERSONA_JURIDICA'?'Persona jurídica':'Agencia'}</p><p>Actividad: {activity}</p><p>Condición PEP: {isPep?`Sí · ${pepDetails}`:'No'}</p><p>Factores personales: {selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE').map(id=>criteria.find(c=>c.id===id)?.name).join(' · ')||'Pendientes en la ficha del sujeto'}</p></div>}
                   <label className="flex items-start gap-2 text-xs text-slate-600"><input type="checkbox" checked={conditionConfirmed} onChange={e=>setConditionConfirmed(e.target.checked)} className="mt-0.5"/>Revisé la ficha del sujeto que se utilizará en este expediente.</label>
-                  <details className="surface p-3 space-y-3"><summary className="text-xs text-teal-700">Perfil transaccional, origen y destino</summary><div className="space-y-3 mt-3">
-                    <label className="field-label">Perfil transaccional considerado<textarea rows={2} value={profileAssessment.profileSummary} onChange={e=>setProfileAssessment(p=>({...p,profileSummary:e.target.value}))} placeholder="Actividad, ingresos declarados, antecedentes y documentación de respaldo" className="border border-slate-200 rounded-lg p-2 text-sm"/></label>
-                    <label className="field-label">Comparación con el perfil<select value={profileAssessment.comparison} onChange={e=>setProfileAssessment(p=>({...p,comparison:e.target.value as ProfileAssessment['comparison']}))}><option value="SIN_DATOS">Información insuficiente</option><option value="COMPATIBLE">Compatible según revisión inicial</option><option value="DESVIACION">Se detecta un desvío para analizar</option></select></label>
-                    {([['comparisonReason','Fundamento de la comparación'],['originDeclared','Origen declarado de fondos'],['destinationDeclared','Destino declarado'],['beneficialOwner','Beneficiario final / terceros, si corresponde']] as const).map(([key,label])=><label className="field-label" key={key}>{label}<input value={profileAssessment[key]} onChange={e=>setProfileAssessment(p=>({...p,[key]:e.target.value}))}/></label>)}
-                  </div></details>
                   {/* Department & Channel */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
@@ -385,7 +379,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                         2
                       </span>
                       <h4 className="text-sm font-bold text-slate-900">
-                        Señales de Alerta y Factores Detectados
+                        Factores de la operación
                       </h4>
                     </div>
                     <span className="text-[11px] font-semibold text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
@@ -393,7 +387,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex flex-wrap gap-1">{([['PRODUCTO','Producto / servicio'],['CANAL','Canal'],['GEOGRAFIA','Geografía'],['OPERACIONAL','Señales adicionales']] as const).map(([category,label])=><button type="button" key={category} onClick={()=>setCriterionCategory(category)} className={`px-2 py-1.5 text-[11px] rounded-md ${criterionCategory===category?'bg-teal-50 text-teal-800':'text-slate-500'}`}>{label} ({criteria.filter(c=>c.category===category&&selectedCriteriaIds.includes(c.id)).length})</button>)}</div>
+                  <div className="flex flex-wrap gap-1">{([['PRODUCTO','Producto / servicio'],['CANAL','Canal'],['GEOGRAFIA','Geografía']] as const).map(([category,label])=><button type="button" key={category} onClick={()=>setCriterionCategory(category)} className={`px-2 py-1.5 text-[11px] rounded-md ${criterionCategory===category?'bg-teal-50 text-teal-800':'text-slate-500'}`}>{label} ({criteria.filter(c=>c.category===category&&selectedCriteriaIds.includes(c.id)).length})</button>)}</div>
                   <p className="text-[11px] text-slate-400">Seleccioná los factores de esta operación. Las condiciones personales provienen de la ficha del sujeto.</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {criteria.filter(c => c.active && c.category===criterionCategory).map((item) => {
@@ -497,6 +491,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                     </div>
                   </div>
 
+                  <div className="surface p-3 text-xs text-slate-600"><span className="font-medium">Piso UIF: </span>{thresholds[0]?`$ ${thresholds[0].amountARS.toLocaleString('es-AR')} por operación`:'Pendiente de configurar'}</div>
                   {/* Medidas Exigibles */}
                   <div className="space-y-2 pt-1 text-xs">
                     <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
@@ -544,7 +539,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                       className="w-full py-3 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:shadow"
                     >
                       <Save className="w-4 h-4" />
-                      <span>{isSaving?'Guardando en base de datos…':'Guardar operación y expediente'}</span>
+                      <span>{isSaving?'Guardando en base de datos…':'Guardar expediente'}</span>
                     </button>
                   </div>
                 </div>

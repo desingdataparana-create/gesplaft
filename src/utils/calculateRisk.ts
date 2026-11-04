@@ -1,5 +1,7 @@
+import { simplifyRiskConfiguration } from './riskConfiguration';
 import type {RiskCriterion, FactorWeight, RiskLevel, RegulatoryThreshold, EvaluationRecord} from '../types';
 export function calculateRisk(criteria:RiskCriterion[],factorWeights:FactorWeight[], selectedCriteriaIds:string[], isPep:boolean, amountARS:number,thresholds:RegulatoryThreshold[]=[],context:{operationAt?:string;subjectType?:string;records?:EvaluationRecord[]}={}) {
+    ({criteria, factorWeights, thresholds} = simplifyRiskConfiguration({criteria, factorWeights, thresholds}));
     const selectedObj = criteria.filter((c) => c.active && selectedCriteriaIds.includes(c.id));
     
     const catScores: Record<string, { avgScore: number; count: number; maxScore: number; weight: number }> = {};
@@ -35,7 +37,7 @@ export function calculateRisk(criteria:RiskCriterion[],factorWeights:FactorWeigh
     totalScore = Math.min(100, Math.max(10, Math.round(totalScore * 10) / 10));
 
     let lvl: RiskLevel = 'BAJO';
-    if (totalScore >= 75 || isPep || selectedCriteriaIds.includes('cli-07') || selectedCriteriaIds.includes('oper-04')) {
+    if (totalScore >= 75 || isPep || selectedCriteriaIds.includes('cli-07')) {
       lvl = totalScore >= 85 ? 'CRITICO' : 'ALTO';
     } else if (totalScore >= 40) {
       lvl = 'MEDIO';
@@ -52,21 +54,14 @@ export function calculateRisk(criteria:RiskCriterion[],factorWeights:FactorWeigh
     if (isPep) {
       alertsGenerated.push('Persona Expuesta Políticamente (PEP): Requiere debida diligencia reforzada.');
     }
-    const thresholdChecks=thresholds.filter(t=>t.code!=='UMB-AGENCIA-04'||context.subjectType==='AGENCIA').map(t=>{
-      const date=businessDate(context.operationAt||new Date().toISOString());
-      const prior=(context.records||[]).filter(r=>{const d=businessDate(r.operationAt||r.timestamp);return t.periodicity==='MENSUAL_ACUMULADO'?d.slice(0,7)===date.slice(0,7):t.periodicity==='ANUAL'?d.slice(0,4)===date.slice(0,4):false}).reduce((n,r)=>n+r.amountARS,0);
-      return {...t,total:amountARS+prior,triggered:amountARS+prior>=t.amountARS};
-    });
+    const thresholdChecks=thresholds.map(t=>({...t,total:amountARS,triggered:amountARS>=t.amountARS}));
     const triggered=thresholdChecks.filter(t=>t.triggered);
     triggered.forEach(t=>alertsGenerated.push(`${t.title}: $${t.total.toLocaleString('es-AR')} / $${t.amountARS.toLocaleString('es-AR')} (${t.periodicity}). ${t.actionRequired}`));
-    if (selectedCriteriaIds.includes('oper-04')) {
-      alertsGenerated.push('Señal de alerta: Sospecha de estructuración o fraccionamiento de operaciones.');
-    }
     if (selectedCriteriaIds.includes('geo-02')) {
       alertsGenerated.push('Operación en zona de frontera internacional.');
     }
 
-    const djofRequired = triggered.some(t=>t.code==='UMB-DJOF-02') || isPep || lvl === 'ALTO' || lvl === 'CRITICO';
+    const djofRequired = isPep || lvl === 'ALTO' || lvl === 'CRITICO';
     const docRequired = triggered.some(t=>t.code==='UMB-ID-01') || djofRequired;
 
     return {

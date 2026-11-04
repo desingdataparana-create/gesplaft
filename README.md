@@ -53,3 +53,6 @@ Piso UIF único, alta de sujeto integrada en Nuevo expediente, cuatro factores E
 
 ## Importación y evaluación
 Importación Excel/CSV con plantilla, vista previa y confirmación; catálogo de tipos editable y evaluación unificada por sujeto y operación. Ver deploy/REVISION_IMPORTACION.md.
+
+## Administración de históricos
+Eliminación exclusiva del superadministrador e importación histórica con clasificación original sin puntaje inferido. Ver deploy/REVISION_HISTORICOS.md.

@@ -93,6 +93,7 @@ export const RiskDossierModal: React.FC<RiskDossierModalProps> = ({
             </div>
           </div>
 
+          {record.evaluationPending&&<section className="p-4 bg-amber-50 rounded-xl space-y-2"><h3 className="font-semibold">Registro histórico pendiente de evaluación</h3><p>Se conserva la clasificación original. No se calculó puntaje ni se determinó debida diligencia. Completá y verificá los parámetros antes de una nueva evaluación.</p>{!record.taxId&&<p>Documento pendiente. No se creó una ficha de sujeto.</p>}<dl className="grid sm:grid-cols-2 gap-2">{Object.entries(record.sourceData||{}).map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value||'Sin informar'}</dd></div>)}</dl><p>Fila original: {record.sourceRow}</p></section>}
           {record.evaluationScope&&<section className="surface p-3 text-xs text-slate-600"><p>{record.evaluationScope.reason}</p><p>Política de evaluación: {record.evaluationPolicyVersion}</p></section>}
           {/* Section: Subject Information */}
           <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-3">
@@ -190,13 +191,13 @@ export const RiskDossierModal: React.FC<RiskDossierModalProps> = ({
             <div className="p-4 sm:p-5 bg-slate-900 text-white rounded-2xl space-y-2">
               <div className="text-[11px] text-slate-400 font-bold uppercase">Dictamen de Riesgo</div>
               <div className="text-3xl sm:text-4xl font-black font-mono">
-                {record.weightedScore} <span className="text-sm text-slate-400">/ 100</span>
+                {record.evaluationPending?'Sin recalcular':record.weightedScore} <span className="text-sm text-slate-400">{record.evaluationPending?'':'/ 100'}</span>
               </div>
               <div className="text-xs font-bold text-teal-300">
-                Nivel Asignado: RIESGO {record.riskLevel}
+                {record.evaluationPending?'Nivel informado por la fuente:':'Nivel asignado:'} RIESGO {record.riskLevel}
               </div>
               <div className="text-[11px] text-slate-300">
-                Debida Diligencia Exigible: <strong>{record.dueDiligenceLevel}</strong>
+                Debida Diligencia Exigible: <strong>{record.evaluationPending?'Pendiente de determinar':record.dueDiligenceLevel}</strong>
               </div>
             </div>
 

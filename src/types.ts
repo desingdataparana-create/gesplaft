@@ -85,6 +85,9 @@ export interface CaseReview {
 }
 
 export interface EvaluationRecord {
+  evaluationPending?:boolean;
+  sourceData?:Record<string,string>;
+  sourceRow?:number;
   requestFingerprint?:string;
   subjectUpdatedAt?:string;
   criteriaSnapshot?:RiskCriterion[];

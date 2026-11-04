@@ -602,7 +602,7 @@ export const ExportReportsModal: React.FC<ExportReportsModalProps> = ({
                             r.riskLevel === 'ALTO' ? 'bg-orange-100 text-orange-800' :
                             r.riskLevel === 'MEDIO' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
                           }`}>
-                            {r.riskLevel} ({r.weightedScore})
+                            {r.riskLevel} ({r.evaluationPending?'Origen · sin recalcular':r.weightedScore})
                           </span>
                         </div>
                       </div>

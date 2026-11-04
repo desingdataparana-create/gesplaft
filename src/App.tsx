@@ -24,8 +24,7 @@ import { RiskEvaluationModal } from './components/RiskEvaluationModal';
 import { 
   INITIAL_FACTOR_WEIGHTS, 
   INITIAL_RISK_CRITERIA, 
-  INITIAL_REGULATORY_THRESHOLDS, 
-  INITIAL_EVALUATION_RECORDS 
+  INITIAL_REGULATORY_THRESHOLDS
 } from './data/initialRiskData';
 
 import { RiskCriterion, FactorWeight, RegulatoryThreshold, EvaluationRecord, Subject } from './types';
@@ -58,7 +57,7 @@ export default function App() {
   };
   useEffect(() => {
     loadState().catch(e=>setServerError(e.message)).finally(()=>setLoading(false));
-    try { const previous = JSON.parse(localStorage.getItem('iafas_eval_records') || '[]'); if(Array.isArray(previous))setLegacyRecords(previous); } catch { /* Legacy bytes are left intact. */ }
+    try { const previous = JSON.parse(localStorage.getItem('iafas_eval_records') || '[]'); if(Array.isArray(previous))setLegacyRecords(previous.filter((r:EvaluationRecord)=>!(/^0{6,10}[0-9]{1,2}$/.test(String(r.taxId||'').replace(/\D/g,''))&&/demostraci[oó]n|ejemplo/i.test(String(r.subjectName||''))))); } catch { /* Legacy bytes are left intact. */ }
   }, []);
   const saveConfig = async (patch:Partial<{criteria:RiskCriterion[];factorWeights:FactorWeight[];thresholds:RegulatoryThreshold[]}>) => {
     setSaving(true); setServerError('');
@@ -264,6 +263,7 @@ export default function App() {
           <AlertsMonitoringView
             organization={organization}
             records={records}
+            onDelete={user?.role==='SUPERADMIN'?async record=>{await request('deleteEvaluation',{id:record.id,version:JSON.stringify(record),confirmed:true});setSelectedDossier(null);setSelectedAnalysis(null);await loadState()}:undefined}
             onUpdateRecordStatus={handleUpdateRecordStatus}
             onViewDossier={setSelectedDossier}
             onAnalyze={allow('analisis',true)?setSelectedAnalysis:undefined}
@@ -271,8 +271,8 @@ export default function App() {
           />
         )}
 
-        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset disabled={!allow('ajustes',true)}><SystemSettingsView criteria={criteria} operationTypes={operationTypesFor(organization)} operationTypesVersion={operationTypesVersion} canImport={allow('sujetos',true)&&allow('expedientes',true)&&allow('ajustes',true)} onImported={loadState} onTypesSaved={(types,version)=>{setOrganization(previous=>({...previous,operationTypes:types}));setOperationTypesVersion(version)}} key={loaded?'loaded':'initial'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}}/></fieldset>}
-        {loaded && !loading && currentTab==='sujetos' && allow('sujetos') && <SubjectsView canEdit={allow('sujetos',true)} canEvaluate={allow('expedientes',true)} criteria={criteria} subjects={subjects} records={records} onSave={handleSaveSubject} onEvaluate={handleOpenNewEvaluationModal} onViewDossier={setSelectedDossier}/>}
+        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset disabled={!allow('ajustes',true)}><SystemSettingsView canManageData={user?.role==='SUPERADMIN'} criteria={criteria} operationTypes={operationTypesFor(organization)} operationTypesVersion={operationTypesVersion} canImport={allow('sujetos',true)&&allow('expedientes',true)&&allow('ajustes',true)} onImported={loadState} onTypesSaved={(types,version)=>{setOrganization(previous=>({...previous,operationTypes:types}));setOperationTypesVersion(version)}} key={loaded?'loaded':'initial'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}}/></fieldset>}
+        {loaded && !loading && currentTab==='sujetos' && allow('sujetos') && <SubjectsView onDelete={user?.role==='SUPERADMIN'?async subject=>{await request('deleteSubject',{id:subject.id,version:subject.updatedAt,confirmed:true});await loadState()}:undefined} canEdit={allow('sujetos',true)} canEvaluate={allow('expedientes',true)} criteria={criteria} subjects={subjects} records={records} onSave={handleSaveSubject} onEvaluate={handleOpenNewEvaluationModal} onViewDossier={setSelectedDossier}/>}
 
         {loaded && !loading && allow('riesgo') && (currentTab === 'normativa' || currentTab === 'parametros' || currentTab === 'matriz' || currentTab === 'umbrales') && (
           <fieldset disabled={!allow('riesgo',true)}><NormativaMatrizView
@@ -293,7 +293,6 @@ export default function App() {
             onOpenExportModal={handleOpenExportModal}
           /></fieldset>
         )}
-        {loaded && !loading && currentTab==='monitoreo' && user?.role==='SUPERADMIN' && records.length===0 && <details className="text-xs text-slate-400 max-w-7xl mx-auto w-full"><summary>Opciones de prueba</summary><button disabled={saving} onClick={()=>importRecords(INITIAL_EVALUATION_RECORDS)} className="text-teal-700 underline mt-3">Cargar ejemplos de prueba</button></details>}
       </main>
 
       {/* Sleek Minimal Footer */}

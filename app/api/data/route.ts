@@ -1,3 +1,4 @@
+import {prepareHistoricalImport,exampleSubject,exampleRecord} from './historicalImport';
 import {prepareOperationsImport,operationTypesVersion} from './importOperations';
 import {subjectSchema,recordSchema,operationSchema} from '../../../src/utils/validation';
 import {buildEvaluationRecord} from '../../../src/utils/evaluationRecord';
@@ -44,11 +45,31 @@ export async function GET(req:Request){try{
 export async function POST(req:Request){try{
  writeOwner(req);const user=await access(req),ownerId=user.ownerId,db=getDb();
  const {action,payload}=z.object({action:z.string(),payload:z.record(z.string(),z.unknown())}).parse(await req.json());
- const required:Record<string,import('../../../src/access').Module>={saveOrganization:'ajustes',saveOperationTypes:'ajustes',previewOperationsImport:'expedientes',importOperations:'expedientes',saveSubject:'sujetos',saveEvaluation:'expedientes',reviewCase:'analisis',updateStatus:'analisis',saveSettings:'riesgo',deleteCriterion:'riesgo',importLocal:'expedientes'};
+ const required:Record<string,import('../../../src/access').Module>={previewHistoricalImport:'expedientes',importHistoricalOperations:'expedientes',deleteSubject:'sujetos',deleteEvaluation:'expedientes',saveOrganization:'ajustes',saveOperationTypes:'ajustes',previewOperationsImport:'expedientes',importOperations:'expedientes',saveSubject:'sujetos',saveEvaluation:'expedientes',reviewCase:'analisis',updateStatus:'analisis',saveSettings:'riesgo',deleteCriterion:'riesgo',importLocal:'expedientes'};
  if(!required[action])return json({error:'Operación desconocida.'},400);
  requireModule(user,required[action],true);
  if(action==='importLocal'){requireModule(user,'sujetos',true);requireModule(user,'riesgo',true);}
  if(action==='reviewCase'||action==='updateStatus')requireModule(user,'expedientes');
+ if(action==='deleteSubject'||action==='deleteEvaluation'){
+   if(user.role!=='SUPERADMIN')throw Error('FORBIDDEN');
+   const input=z.object({id:z.string().min(1).max(100),version:z.string().min(1).max(100000),confirmed:z.literal(true)}).parse(payload);
+   if(action==='deleteSubject'){
+     const [person]=await db.select().from(subjects).where(and(eq(subjects.ownerId,ownerId),eq(subjects.id,input.id)));
+     if(!person)return json({error:'El sujeto ya no existe.'},404);
+     if(person.updatedAt!==input.version)return json({error:'La ficha cambió. Actualizá antes de eliminarla.'},409);
+     const rows=await db.select().from(evaluations).where(eq(evaluations.ownerId,ownerId));
+     if(rows.some(r=>r.subjectId===person.id||r.record.taxId.replace(/\D/g,'')===person.documentKey))return json({error:'El sujeto tiene operaciones vinculadas. Eliminá primero esas operaciones.'},409);
+     const changed=await db.delete(subjects).where(and(eq(subjects.ownerId,ownerId),eq(subjects.id,input.id),eq(subjects.updatedAt,input.version))).returning({id:subjects.id});
+     if(!changed.length)return json({error:'La ficha cambió. Actualizá antes de eliminarla.'},409);
+   }else{
+     const [row]=await db.select().from(evaluations).where(and(eq(evaluations.ownerId,ownerId),eq(evaluations.id,input.id)));
+     if(!row)return json({error:'La operación ya no existe.'},404);
+     if(JSON.stringify(row.record)!==input.version)return json({error:'La operación cambió. Actualizá antes de eliminarla.'},409);
+     const changed=await db.delete(evaluations).where(and(eq(evaluations.ownerId,ownerId),eq(evaluations.id,input.id),eq(evaluations.record,row.record))).returning({id:evaluations.id});
+     if(!changed.length)return json({error:'La operación cambió. Actualizá antes de eliminarla.'},409);
+   }
+   return json({deleted:input.id});
+ }
  if(action==='saveOperationTypes'){
    const input=z.object({version:z.string(),types:z.array(z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{1,79}$/),name:z.string().trim().min(2).max(120),active:z.boolean(),uifScope:z.enum(['PISO','SIEMPRE','NO_APLICA']),productCriterionId:z.string().optional()})).min(1).max(100)}).parse(payload);
    if(new Set(input.types.map(t=>t.code)).size!==input.types.length)return json({error:'Hay códigos de operación repetidos.'},400);
@@ -63,6 +84,25 @@ export async function POST(req:Request){try{
    const organization={...(org?.organization||DEFAULT_ORGANIZATION),operationTypes:types},now=new Date().toISOString();
    await db.insert(organizationSettings).values({ownerId,organization,updatedAt:now}).onConflictDoUpdate({target:organizationSettings.ownerId,set:{organization,updatedAt:now}});
    return json({organization,operationTypesVersion:await operationTypesVersion(types)});
+ }
+ if(action==='previewHistoricalImport'||action==='importHistoricalOperations'){
+   if(user.role!=='SUPERADMIN')throw Error('FORBIDDEN');
+   const [people,rows]=await Promise.all([db.select().from(subjects).where(eq(subjects.ownerId,ownerId)),db.select().from(evaluations).where(eq(evaluations.ownerId,ownerId))]);
+   const plan=await prepareHistoricalImport(payload.rows,ownerId,people as Subject[],rows.map(r=>r.record),user);
+   const examples=rows.filter(r=>exampleRecord(r.record));
+   if(action==='previewHistoricalImport')return json({...plan.result,examples:examples.length});
+   if(payload.confirmed!==true)return json({error:'Confirmá la revisión del listado histórico.'},400);
+   if(plan.result.errors)return json({error:'Corregí todos los errores antes de importar.'},400);
+   if(payload.fingerprint!==plan.result.fingerprint)return json({error:'Los datos cambiaron. Actualizá la vista previa.'},409);
+   const queries=[];const removed=new Set(payload.replaceExamples===true?examples.map(r=>r.id):[]);
+   if(removed.size){for(const r of examples)queries.push(db.delete(evaluations).where(and(eq(evaluations.ownerId,ownerId),eq(evaluations.id,r.id))));}
+   let subjectsRemoved=0;
+   if(payload.replaceExamples===true){for(const p of people.filter(exampleSubject)){if(!rows.some(r=>!removed.has(r.id)&&(r.subjectId===p.id||r.record.taxId.replace(/\D/g,'')===p.documentKey))){queries.push(db.delete(subjects).where(and(eq(subjects.ownerId,ownerId),eq(subjects.id,p.id))));subjectsRemoved++;}}}
+   const now=new Date().toISOString();
+   for(const person of plan.newSubjects)queries.push(db.insert(subjects).values({...person,ownerId,documentKey:person.taxId.replace(/\D/g,''),pepDetails:'',createdAt:now,updatedAt:now}));
+   for(const record of plan.records)queries.push(db.insert(evaluations).values({id:record.id,ownerId,subjectId:record.subjectId||null,createdAt:now,record}));
+   if(queries.length)await db.batch(queries as [typeof queries[number],...typeof queries]);
+   return json({imported:plan.records.length,subjectsCreated:plan.newSubjects.length,skipped:plan.result.skipped,examplesRemoved:removed.size,subjectsRemoved});
  }
  if(action==='previewOperationsImport'||action==='importOperations'){
    requireModule(user,'sujetos',true);requireModule(user,'ajustes',true);

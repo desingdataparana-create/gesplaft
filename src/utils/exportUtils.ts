@@ -1,3 +1,5 @@
+import {businessDate} from './businessTime';
+import {operationLabel} from './operationTypes';
 import { EvaluationRecord, RiskCriterion, FactorWeight, RegulatoryThreshold } from '../types';
 
 export interface DateRangeFilter {
@@ -26,11 +28,11 @@ export function filterRecordsByPeriod(
   return records.filter((rec) => {
     // Date filtering
     if (filters.startDate) {
-      const recDate = (rec.operationAt||rec.timestamp).slice(0, 10);
+      const recDate = businessDate(rec.operationAt||rec.timestamp);
       if (recDate < filters.startDate) return false;
     }
     if (filters.endDate) {
-      const recDate = (rec.operationAt||rec.timestamp).slice(0, 10);
+      const recDate = businessDate(rec.operationAt||rec.timestamp);
       if (recDate > filters.endDate) return false;
     }
 
@@ -343,12 +345,12 @@ export function generateRecordsXLS(
 
     xml += `      <Row ss:Height="20">\n`;
     xml += `        <Cell ss:StyleID="CellText"><Data ss:Type="String">${escapeXml(r.dossierNumber)}</Data></Cell>\n`;
-    xml += `        <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${escapeXml((r.operationAt||r.timestamp).slice(0, 10))}</Data></Cell>\n`;
+    xml += `        <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${escapeXml(businessDate(r.operationAt||r.timestamp))}</Data></Cell>\n`;
     xml += `        <Cell ss:StyleID="CellText"><Data ss:Type="String">${escapeXml(r.subjectName)}</Data></Cell>\n`;
     xml += `        <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${escapeXml(r.taxId)}</Data></Cell>\n`;
     xml += `        <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${r.pepStatus ? 'SÍ' : 'NO'}</Data></Cell>\n`;
     xml += `        <Cell ss:StyleID="CellText"><Data ss:Type="String">${escapeXml(r.activityOcupation)}</Data></Cell>\n`;
-    xml += `        <Cell ss:StyleID="CellText"><Data ss:Type="String">${escapeXml(r.operationType.replace('_', ' '))}</Data></Cell>\n`;
+    xml += `        <Cell ss:StyleID="CellText"><Data ss:Type="String">${escapeXml(operationLabel(r))}</Data></Cell>\n`;
     xml += `        <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${r.amountARS}</Data></Cell>\n`;
     xml += `        <Cell ss:StyleID="CellText"><Data ss:Type="String">${escapeXml(r.locationDepartment)}</Data></Cell>\n`;
     xml += `        <Cell ss:StyleID="CellText"><Data ss:Type="String">${escapeXml(r.channelName)}</Data></Cell>\n`;
@@ -445,7 +447,9 @@ export function generateRecordsCSV(
     'Estado_Expediente',
     'Evaluador',
     'Cargo_Evaluador',
-    'Observaciones'
+    'Observaciones',
+    'Referencia_Importacion',
+    'Tipo_Operacion_Nombre'
   ];
 
   csv += headers.join(';') + '\r\n';
@@ -453,7 +457,7 @@ export function generateRecordsCSV(
   for (const r of records) {
     const row = [
       `"${r.dossierNumber}"`,
-      `"${(r.operationAt||r.timestamp).slice(0, 10)}"`,
+      `"${businessDate(r.operationAt||r.timestamp)}"`,
       `"${(r.subjectName || '').replace(/"/g, '""')}"`,
       `"${r.subjectType}"`,
       `"${r.taxId}"`,
@@ -472,7 +476,9 @@ export function generateRecordsCSV(
       `"${r.status}"`,
       `"${(r.evaluator || '').replace(/"/g, '""')}"`,
       `"${(r.evaluatorRole || '').replace(/"/g, '""')}"`,
-      `"${(r.notes || '').replace(/"/g, '""')}"`
+      `"${(r.notes || '').replace(/"/g, '""')}"`,
+      `"${(r.importReference||'').replace(/"/g,'""')}"`,
+      `"${operationLabel(r).replace(/"/g,'""')}"`
     ];
 
     csv += row.map(v=>String(v).replace(/^("?)([\s]*[=+@-])/,"$1'$2")).join(';') + '\r\n';

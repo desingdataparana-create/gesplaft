@@ -1,5 +1,6 @@
 'use client';
 import { simplifyRiskConfiguration } from './utils/riskConfiguration';
+import {operationTypesFor} from './utils/operationTypes';
 import {sitePath,passwordAuth} from './utils/paths';
 
 import {can,type AccessUser} from './access';
@@ -31,6 +32,7 @@ import { RiskCriterion, FactorWeight, RegulatoryThreshold, EvaluationRecord, Sub
 
 export default function App() {
   const [user,setUser]=useState<AccessUser|null>(null);
+  const [operationTypesVersion,setOperationTypesVersion]=useState('');
   const [dashboard,setDashboard]=useState<DashboardData|null>(null);
   const allow=(module:Parameters<typeof can>[1],write=false)=>can(user,module,write);
   const [organization,setOrganization]=useState<OrganizationSettings>(DEFAULT_ORGANIZATION);
@@ -50,8 +52,8 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [legacyRecords, setLegacyRecords] = useState<EvaluationRecord[]>([]);
   const loadState = async () => {
-    const data = await request<{criteria:RiskCriterion[];factorWeights:FactorWeight[];thresholds:RegulatoryThreshold[];records:EvaluationRecord[];subjects:Subject[];organization:OrganizationSettings;user:AccessUser;dashboard:DashboardData|null}>();
-    setUser(data.user);setDashboard(data.dashboard);setOrganization(data.organization||DEFAULT_ORGANIZATION);setCriteria(data.criteria); setFactorWeights(data.factorWeights); setThresholds(data.thresholds); setRecords(data.records); setSubjects(data.subjects);setLoaded(true);
+    const data = await request<{criteria:RiskCriterion[];factorWeights:FactorWeight[];thresholds:RegulatoryThreshold[];records:EvaluationRecord[];subjects:Subject[];organization:OrganizationSettings;user:AccessUser;dashboard:DashboardData|null;operationTypesVersion:string}>();
+    setOperationTypesVersion(data.operationTypesVersion);setUser(data.user);setDashboard(data.dashboard);setOrganization(data.organization||DEFAULT_ORGANIZATION);setCriteria(data.criteria); setFactorWeights(data.factorWeights); setThresholds(data.thresholds); setRecords(data.records); setSubjects(data.subjects);setLoaded(true);
     setLegacyRecords(prev=>prev.filter(r=>!data.records.some(saved=>saved.id===r.id)));
   };
   useEffect(() => {
@@ -269,7 +271,7 @@ export default function App() {
           />
         )}
 
-        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset disabled={!allow('ajustes',true)}><SystemSettingsView key={loaded?'loaded':'initial'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}}/></fieldset>}
+        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset disabled={!allow('ajustes',true)}><SystemSettingsView criteria={criteria} operationTypes={operationTypesFor(organization)} operationTypesVersion={operationTypesVersion} canImport={allow('sujetos',true)&&allow('expedientes',true)&&allow('ajustes',true)} onImported={loadState} onTypesSaved={(types,version)=>{setOrganization(previous=>({...previous,operationTypes:types}));setOperationTypesVersion(version)}} key={loaded?'loaded':'initial'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}}/></fieldset>}
         {loaded && !loading && currentTab==='sujetos' && allow('sujetos') && <SubjectsView canEdit={allow('sujetos',true)} canEvaluate={allow('expedientes',true)} criteria={criteria} subjects={subjects} records={records} onSave={handleSaveSubject} onEvaluate={handleOpenNewEvaluationModal} onViewDossier={setSelectedDossier}/>}
 
         {loaded && !loading && allow('riesgo') && (currentTab === 'normativa' || currentTab === 'parametros' || currentTab === 'matriz' || currentTab === 'umbrales') && (
@@ -312,6 +314,7 @@ export default function App() {
 
       {/* 2. Modal Emergente de Carga de Operación / Nueva Evaluación */}
       <RiskEvaluationModal
+        operationTypes={operationTypesFor(organization)}
         thresholds={thresholds}
         records={records}
         canEditSubject={allow('sujetos',true)}

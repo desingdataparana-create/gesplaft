@@ -1,3 +1,7 @@
+import {prepareOperationsImport,operationTypesVersion} from './importOperations';
+import {subjectSchema,recordSchema,operationSchema} from '../../../src/utils/validation';
+import {buildEvaluationRecord} from '../../../src/utils/evaluationRecord';
+import {operationTypesFor} from '../../../src/utils/operationTypes';
 import { simplifyRiskConfiguration, EBR_CATEGORIES, UIF_FLOOR_CODE } from '../../../src/utils/riskConfiguration';
 import {access,requireModule} from '../../access';
 import {can} from '../../../src/access';
@@ -13,9 +17,6 @@ import type { EvaluationRecord, Subject, RiskCriterion, FactorWeight, Regulatory
 export const dynamic = 'force-dynamic';
 const subjectTypes = ['PERSONA_FISICA','PERSONA_JURIDICA','AGENCIA'] as const;
 const statusValues = ['PENDIENTE','EN_ANALISIS','JUSTIFICADO','ALERTA_EMITIDA','REPORTE_ROS'] as const;
-const subjectSchema = z.object({id:z.string().optional(),updatedAt:z.string().optional(),subjectName:z.string().trim().min(2).max(200),taxId:z.string().trim().min(7).max(20),subjectType:z.enum(subjectTypes),address:z.string().trim().max(500).default(''),email:z.union([z.literal(''),z.string().trim().email().max(254)]).default(''),phone:z.string().trim().max(40).default(''),activity:z.string().trim().min(2).max(200),pepStatus:z.boolean(),pepDetails:z.string().max(1000).optional(),clientCriteriaIds:z.array(z.string()).max(100).default([])}).refine(s=>/^\d{7,11}$/.test(s.taxId.replace(/\D/g,'')),{message:'Revisá el DNI/CUIT: debe tener entre 7 y 11 dígitos.'}).refine(s=>!s.phone||s.phone.replace(/\D/g,'').length>=6,{message:'Revisá el teléfono.'}).refine(s=>!s.pepStatus||!!s.pepDetails?.trim(),{message:'Indicá el cargo o condición PEP en la ficha del sujeto.'});
-const recordSchema = z.object({subjectUpdatedAt:z.string().optional(),operationType:z.enum(['COBRO_PREMIO','APUESTA_PRESENCIAL','APUESTA_ONLINE','CAMBIO_FICHAS','ALTA_AGENCIA']),amountARS:z.number().finite().positive().max(1e15),locationDepartment:z.string().trim().min(1).max(200),channelName:z.string().trim().min(1).max(200),selectedCriteriaIds:z.array(z.string()).min(1).max(200),notes:z.string().max(10000)});
-const operationSchema=recordSchema.extend({operationAt:z.string().datetime().refine(v=>Date.parse(v)<=Date.now()+60000,{message:'La operación no puede tener fecha futura.'}),conditionConfirmed:z.literal(true,{error:'Confirmá la condición del sujeto para esta operación.'}),pepStatus:z.boolean(),pepDetails:z.string().max(1000).optional(),activityAtOperation:z.string().trim().min(2).max(200)}).refine(r=>!r.pepStatus || !!r.pepDetails?.trim(),{message:'Indicá el cargo o condición PEP evaluada.'});
 function json(body:unknown,status=200){return Response.json(body,{status,headers:{'Cache-Control':'no-store'}});}
 function owner(req:Request){const id=req.headers.get('oai-authenticated-user-id');if(!id)throw new Error('UNAUTHORIZED');return id;}
 function writeOwner(req:Request){const id=owner(req);const origin=req.headers.get('Origin');if(origin && origin!==new URL(req.url).origin)throw new Error('FORBIDDEN');return id;}
@@ -38,21 +39,51 @@ export async function GET(req:Request){try{
   const [org]=await db.select().from(organizationSettings).where(eq(organizationSettings.ownerId,ownerId));
   const records=rows.map(r=>r.record);
   const dashboard=can(user,'dashboard')?{subjects:people.length,total:records.length,pending:records.filter(r=>r.status==='PENDIENTE').length,inAnalysis:records.filter(r=>r.status==='EN_ANALISIS').length,closed:records.filter(r=>r.status==='JUSTIFICADO').length,ros:records.filter(r=>r.status==='REPORTE_ROS').length,risk:Object.fromEntries(['BAJO','MEDIO','ALTO','CRITICO'].map(k=>[k,records.filter(r=>r.riskLevel===k).length]))}:null;
-  return json({...config,user,dashboard,organization:org?.organization||DEFAULT_ORGANIZATION,subjects:can(user,'sujetos')||can(user,'expedientes',true)?people:[],records:can(user,'expedientes')?records.map(r=>can(user,'analisis')?r:({...r,analysis:undefined,analysisHistory:undefined})):[]});
+  return json({...config,user,dashboard,organization:{...(org?.organization||DEFAULT_ORGANIZATION),operationTypes:operationTypesFor(org?.organization)},operationTypesVersion:await operationTypesVersion(operationTypesFor(org?.organization)),subjects:can(user,'sujetos')||can(user,'expedientes',true)?people:[],records:can(user,'expedientes')?records.map(r=>can(user,'analisis')?r:({...r,analysis:undefined,analysisHistory:undefined})):[]});
 }catch(e){return handleError(e)}}
 export async function POST(req:Request){try{
  writeOwner(req);const user=await access(req),ownerId=user.ownerId,db=getDb();
  const {action,payload}=z.object({action:z.string(),payload:z.record(z.string(),z.unknown())}).parse(await req.json());
- const required:Record<string,import('../../../src/access').Module>={saveOrganization:'ajustes',saveSubject:'sujetos',saveEvaluation:'expedientes',reviewCase:'analisis',updateStatus:'analisis',saveSettings:'riesgo',deleteCriterion:'riesgo',importLocal:'expedientes'};
+ const required:Record<string,import('../../../src/access').Module>={saveOrganization:'ajustes',saveOperationTypes:'ajustes',previewOperationsImport:'expedientes',importOperations:'expedientes',saveSubject:'sujetos',saveEvaluation:'expedientes',reviewCase:'analisis',updateStatus:'analisis',saveSettings:'riesgo',deleteCriterion:'riesgo',importLocal:'expedientes'};
  if(!required[action])return json({error:'Operación desconocida.'},400);
  requireModule(user,required[action],true);
  if(action==='importLocal'){requireModule(user,'sujetos',true);requireModule(user,'riesgo',true);}
  if(action==='reviewCase'||action==='updateStatus')requireModule(user,'expedientes');
+ if(action==='saveOperationTypes'){
+   const input=z.object({version:z.string(),types:z.array(z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{1,79}$/),name:z.string().trim().min(2).max(120),active:z.boolean(),uifScope:z.enum(['PISO','SIEMPRE','NO_APLICA']),productCriterionId:z.string().optional()})).min(1).max(100)}).parse(payload);
+   if(new Set(input.types.map(t=>t.code)).size!==input.types.length)return json({error:'Hay códigos de operación repetidos.'},400);
+   if(!input.types.some(t=>t.active))return json({error:'Debe quedar al menos un tipo activo.'},400);
+   const [org]=await db.select().from(organizationSettings).where(eq(organizationSettings.ownerId,ownerId));
+   const current=operationTypesFor(org?.organization);
+   if(await operationTypesVersion(current)!==input.version)return json({error:'Los tipos cambiaron. Actualizá la página antes de guardar.'},409);
+   const config=await configFor(ownerId);
+   if(input.types.some(t=>t.productCriterionId&&!config.criteria.some(c=>c.id===t.productCriterionId&&c.active&&!c.deletedAt&&c.category==='PRODUCTO')))return json({error:'El producto predeterminado no está activo.'},400);
+   const types=[...input.types,...current.filter(t=>!input.types.some(n=>n.code===t.code)).map(t=>({...t,active:false}))];
+   if(types.length>100)return json({error:'El catálogo admite hasta 100 tipos, incluidos los retirados.'},400);
+   const organization={...(org?.organization||DEFAULT_ORGANIZATION),operationTypes:types},now=new Date().toISOString();
+   await db.insert(organizationSettings).values({ownerId,organization,updatedAt:now}).onConflictDoUpdate({target:organizationSettings.ownerId,set:{organization,updatedAt:now}});
+   return json({organization,operationTypesVersion:await operationTypesVersion(types)});
+ }
+ if(action==='previewOperationsImport'||action==='importOperations'){
+   requireModule(user,'sujetos',true);requireModule(user,'ajustes',true);
+   const [config,people,rows,orgs]=await Promise.all([configFor(ownerId),db.select().from(subjects).where(eq(subjects.ownerId,ownerId)),db.select().from(evaluations).where(eq(evaluations.ownerId,ownerId)),db.select().from(organizationSettings).where(eq(organizationSettings.ownerId,ownerId))]);
+   const plan=await prepareOperationsImport(payload.rows,ownerId,people as Subject[],rows.map(r=>r.record),config,operationTypesFor(orgs[0]?.organization),user);
+   if(action==='previewOperationsImport')return json(plan.result);
+   if(payload.confirmed!==true)return json({error:'Confirmá la revisión de los sujetos y operaciones antes de importar.'},400);
+   if(plan.result.errors)return json({error:'Corregí todas las filas con errores antes de importar.',preview:plan.result},400);
+   if(plan.result.newCount&&payload.fingerprint!==plan.result.fingerprint)return json({error:'Los datos, parámetros o sujetos cambiaron. Generá una nueva vista previa.'},409);
+   const now=new Date().toISOString();
+   const inserts=[...plan.newSubjects.map(person=>db.insert(subjects).values({...person,ownerId,documentKey:person.taxId.replace(/\D/g,''),pepDetails:person.pepDetails||'',createdAt:person.updatedAt||now,updatedAt:person.updatedAt||now})),...plan.records.map(record=>db.insert(evaluations).values({id:record.id,ownerId,subjectId:record.subjectId,createdAt:now,record}))];
+   if(inserts.length)await db.batch(inserts as [typeof inserts[number],...typeof inserts]);
+   return json({imported:plan.records.length,subjectsCreated:plan.newSubjects.length,skipped:plan.result.skipped});
+ }
  if(action==='saveOrganization'){
    const organization=z.object({shortName:z.string().trim().min(2).max(40),legalName:z.string().trim().min(2).max(200),area:z.string().trim().min(2).max(120),taxId:z.string().trim().max(30),address:z.string().trim().max(500),email:z.union([z.literal(''),z.string().trim().email().max(254)]),phone:z.string().trim().max(50),website:z.union([z.literal(''),z.string().url().max(300).refine(v=>/^https?:\/\//.test(v),{message:'Usá una dirección web http o https.'})]),logo:z.string().max(280000).refine(v=>!v||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(v),{message:'Usá un logo PNG, JPG o WebP de hasta 200 KB.'})}).parse(payload);
    if(organization.logo){const [prefix,encoded]=organization.logo.split(',');const bytes=atob(encoded);const valid=prefix.includes('image/png')?bytes.startsWith('\x89PNG\r\n\x1a\n'):prefix.includes('image/jpeg')?bytes.startsWith('\xff\xd8\xff'):bytes.startsWith('RIFF')&&bytes.slice(8,12)==='WEBP';if(!valid||bytes.length>200000)return json({error:'El archivo del logo no es válido o supera 200 KB.'},400);}
-   await db.insert(organizationSettings).values({ownerId,organization,updatedAt:new Date().toISOString()}).onConflictDoUpdate({target:organizationSettings.ownerId,set:{organization,updatedAt:new Date().toISOString()}});
-   return json({organization});
+   const [previousOrg]=await db.select().from(organizationSettings).where(eq(organizationSettings.ownerId,ownerId));
+   const savedOrganization={...organization,operationTypes:operationTypesFor(previousOrg?.organization)};
+   await db.insert(organizationSettings).values({ownerId,organization:savedOrganization,updatedAt:new Date().toISOString()}).onConflictDoUpdate({target:organizationSettings.ownerId,set:{organization:savedOrganization,updatedAt:new Date().toISOString()}});
+   return json({organization:savedOrganization});
  }
  if(action==='saveSubject'){
    const input=subjectSchema.parse(payload),documentKey=input.taxId.replace(/\D/g,''),now=new Date().toISOString();
@@ -82,13 +113,13 @@ export async function POST(req:Request){try{
    const input=operationSchema.parse({...payload.record as object,pepStatus:person.pepStatus,pepDetails:person.pepDetails,activityAtOperation:person.activity});
    const subjectId=person.id!;
    const config=await configFor(ownerId);
-   input.selectedCriteriaIds=[...new Set([...input.selectedCriteriaIds.filter(id=>!config.criteria.some(c=>c.id===id&&c.category==='CLIENTE')),...person.clientCriteriaIds])];
-   if(input.selectedCriteriaIds.some(id=>!config.criteria.some(c=>c.id===id&&c.active)))return json({error:'Uno de los criterios ya no está activo. Actualizá la página y revisá la selección.'},409);
-   if(EBR_CATEGORIES.some(category=>!config.criteria.some(c=>c.category===category&&input.selectedCriteriaIds.includes(c.id))))return json({error:'Completá los criterios personales en la ficha del sujeto y los criterios de producto/servicio, canal y geografía en la operación.'},400);
-   const history=await db.select().from(evaluations).where(and(eq(evaluations.ownerId,ownerId),eq(evaluations.subjectId,subjectId)));
-   const result=calculateRisk(config.criteria,config.factorWeights,input.selectedCriteriaIds,input.pepStatus,input.amountARS,config.thresholds,{operationAt:input.operationAt,subjectType:person.subjectType,records:history.map(r=>r.record)});
+   const [org]=await db.select().from(organizationSettings).where(eq(organizationSettings.ownerId,ownerId));
+   const type=operationTypesFor(org?.organization).find(t=>t.code===input.operationType&&t.active);
+   if(!type)return json({error:'El tipo de operación no está activo. Actualizá la página.'},409);
+   let record:EvaluationRecord;
+   try{record=buildEvaluationRecord(input,person as Subject,config,type,{id:requestId,now,evaluator:user.email,role:user.role,fingerprint});}
+   catch(e){return json({error:(e as Error).message},409);}
    const id=requestId;
-   const record:EvaluationRecord={...input,id,requestFingerprint:fingerprint,criteriaSnapshot:config.criteria.filter(c=>input.selectedCriteriaIds.includes(c.id)),weightsSnapshot:config.factorWeights,thresholdsSnapshot:config.thresholds,dossierNumber:`EXP-PLA-${new Date().getFullYear()}-${id.slice(0,8).toUpperCase()}`,timestamp:now,conditionReviewedAt:now,evaluator:req.headers.get('oai-authenticated-user-email')||'Usuario autenticado',evaluatorRole:user.role,subjectId,subjectName:person.subjectName,taxId:person.taxId,subjectType:person.subjectType as Subject['subjectType'],address:person.address||'',email:person.email||'',phone:person.phone||'',activityOcupation:input.activityAtOperation,pepStatus:input.pepStatus,pepDetails:input.pepDetails,weightedScore:result.weightedScore,rawScore:result.rawScore,riskLevel:result.riskLevel,dueDiligenceLevel:result.dueDiligence,status:'PENDIENTE',requiresDJOF:result.requiresDJOF,requiresDocumentation:result.requiresDocumentation,alerts:result.alerts,analysisVersion:0};
    const operation=db.insert(evaluations).values({id,ownerId,subjectId,createdAt:now,record});
    try{
      // A known person is referenced, never re-created or edited by an operation.

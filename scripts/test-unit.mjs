@@ -6,7 +6,7 @@ import {join} from 'node:path';
 const dir=await mkdtemp(join(tmpdir(),'gesplaft-unit-'));
 try {
   const file=join(dir,'logic.mjs');
-  await build({stdin:{contents:`export * from './src/utils/calculateRisk';export * from './src/utils/riskConfiguration';export * from './src/utils/exportUtils';export * from './src/data/initialRiskData';export * from './src/access';`,resolveDir:process.cwd()},outfile:file,bundle:true,format:'esm',platform:'node'});
+  await build({stdin:{contents:`export * from './src/utils/calculateRisk';export * from './src/utils/riskConfiguration';export * from './src/utils/exportUtils';export * from './src/data/initialRiskData';export * from './src/access';export * from './src/utils/operationImport';export * from './src/utils/operationTypes';export {businessDateTimeInput} from './src/utils/businessTime';`,resolveDir:process.cwd()},outfile:file,bundle:true,format:'esm',platform:'node'});
   const x=await import(file),ids=['cli-01','prod-01','can-01','geo-01'];
   const floor={...x.INITIAL_REGULATORY_THRESHOLDS[0],amountARS:100};
   const run=(amount,ts=[floor],context={})=>x.calculateRisk(x.INITIAL_RISK_CRITERIA,x.INITIAL_FACTOR_WEIGHTS,ids,false,amount,ts,context);
@@ -36,9 +36,27 @@ try {
   const pep=x.calculateRisk(simplified.criteria,simplified.factorWeights,ids,true,40,[floor]);
   assert.equal(pep.riskLevel,'ALTO');assert.equal(pep.dueDiligence,'REFORZADA');
   assert.equal(x.businessDate('2026-11-01T01:00:00Z'),'2026-10-31');
+  assert.equal(x.businessDateTimeInput(new Date('2026-11-01T01:00:00Z')),'2026-10-31T22:00');
+  assert.equal(x.filterRecordsByPeriod([{...historical,operationAt:'2026-11-01T01:00:00Z'}],{startDate:'2026-10-31',endDate:'2026-10-31'}).length,1,'filters use Argentine operation date');
   assert.equal(x.filterRecordsByPeriod([historical],{startDate:'2026-10-01',endDate:'2026-10-31'}).length,1);
   assert.equal(x.filterRecordsByPeriod([historical],{channel:'Sala B'}).length,0);
   assert.match(x.generateRecordsCSV([historical]),/"'=HYPERLINK/);
   for(const role of x.ROLES){const u={role,active:true,grants:{sujetos:'read'}};assert.equal(x.can(u,'sujetos'),true);assert.equal(x.can(u,'sujetos',true),role==='SUPERADMIN');assert.equal(x.can({...u,active:false},'sujetos'),false);}
+  assert.equal(x.parseImportAmount('1250,25'),1250.25);
+  for(const value of ['1.250,25','1,250.25','0','-10','Infinity','1e6'])assert.throws(()=>x.parseImportAmount(value));
+  assert.equal(x.parseImportDate('2026-11-01 14:30'),'2026-11-01T17:30:00.000Z');
+  for(const value of ['2026-02-31 12:00','01/01/2099 12:00','2026-13-01 12:00'])assert.throws(()=>x.parseImportDate(value));
+  assert.deepEqual(x.parseCsv('\uFEFFa;b\r\n"uno;dos";"línea 1\nlínea 2"\r\n'),[['a','b'],['uno;dos','línea 1\nlínea 2']]);
+  assert.deepEqual(x.parseCsv('a,b\n"texto ""entrecomillado""",dos'),[['a','b'],['texto "entrecomillado"','dos']]);
+  assert.throws(()=>x.parseCsv('a;b\n"sin cerrar;dos'));
+  assert.throws(()=>x.rowsFromMatrix([['documento','documento'],['1','2']]));
+  const baseRecord={operationType:'COBRO_PREMIO'};
+  assert.equal(x.operationLabel(baseRecord),'Cobro de premio');
+  assert.equal(x.operationLabel({...baseRecord,operationTypeName:'Nombre histórico'}),'Nombre histórico');
+  const online=x.calculateRisk(simplified.criteria,simplified.factorWeights,ids,false,1,[floor],{operationType:x.DEFAULT_OPERATION_TYPES.find(t=>t.code==='APUESTA_ONLINE')});
+  assert.equal(online.evaluationScope.identificationRequired,true);
+  assert.equal(online.evaluationScope.meetsFloor,false);
+  const inactive=x.INITIAL_RISK_CRITERIA.map(c=>c.id==='cli-07'?{...c,active:false}:c);
+  assert.equal(x.calculateRisk(inactive,x.INITIAL_FACTOR_WEIGHTS,[...ids,'cli-07'],false,40,[floor]).riskLevel,run(40).riskLevel,'inactive criterion cannot force a high risk');
   console.log('PASS: piso UIF, límites decimales, configuración anterior, cuatro factores, PEP, fechas, CSV y permisos.');
 } finally {await rm(dir,{recursive:true,force:true});}

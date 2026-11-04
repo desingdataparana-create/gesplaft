@@ -1,3 +1,4 @@
+import {operationLabel} from '../utils/operationTypes';
 import React from 'react';
 import { EvaluationRecord, RiskCriterion, OrganizationSettings } from '../types';
 import { 
@@ -86,11 +87,13 @@ export const RiskDossierModal: React.FC<RiskDossierModalProps> = ({
 
             <div className="sm:text-right font-mono text-xs border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
               <div className="font-extrabold text-slate-900 text-sm sm:text-base">{record.dossierNumber}</div>
-              <div className="text-slate-500">Registro: {new Date(record.timestamp).toLocaleString('es-AR')}</div>
-              <div className="text-slate-500">Operación: {new Date(record.operationAt||record.timestamp).toLocaleString('es-AR')}</div>
+              {record.importReference&&<div>Referencia importada: {record.importReference}</div>}
+              <div className="text-slate-500">Registro: {new Date(record.timestamp).toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires'})}</div>
+              <div className="text-slate-500">Operación: {new Date(record.operationAt||record.timestamp).toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires'})}</div>
             </div>
           </div>
 
+          {record.evaluationScope&&<section className="surface p-3 text-xs text-slate-600"><p>{record.evaluationScope.reason}</p><p>Política de evaluación: {record.evaluationPolicyVersion}</p></section>}
           {/* Section: Subject Information */}
           <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-3">
             <h4 className="font-bold text-slate-900 uppercase text-xs tracking-wider border-b border-slate-200 pb-1.5">
@@ -119,7 +122,7 @@ export const RiskDossierModal: React.FC<RiskDossierModalProps> = ({
               <div>
                 <span className="text-slate-500 block">Operación / Monto:</span>
                 <strong className="text-slate-900 font-mono font-bold">
-                  {record.operationType.replace('_', ' ')} - $ {record.amountARS.toLocaleString('es-AR')}
+                  {operationLabel(record)} - $ {record.amountARS.toLocaleString('es-AR')}
                 </strong>
               </div>
               <div>
@@ -221,7 +224,7 @@ export const RiskDossierModal: React.FC<RiskDossierModalProps> = ({
           )}
 
           {record.profileAssessment&&<section className="surface p-4 space-y-2 text-xs"><h4 className="font-semibold">Datos históricos de la carga anterior</h4><p>{record.profileAssessment.profileSummary||'Sin información suficiente al momento de la carga'}</p><p>Comparación: {record.profileAssessment.comparison}</p><p>{record.profileAssessment.comparisonReason}</p><p>Origen declarado: {record.profileAssessment.originDeclared||'Pendiente'}</p><p>Destino declarado: {record.profileAssessment.destinationDeclared||'Pendiente'}</p></section>}
-          {record.analysis&&<section className="surface p-4 space-y-2 text-xs"><h4 className="font-semibold">Análisis documentado</h4><p>{record.analysis.classification} · {new Date(record.analysis.reviewedAt).toLocaleString('es-AR')} · {record.analysis.analyst}</p><p>{record.analysis.profileSummary}</p><p>Inusualidad: {record.analysis.unusualType||'No consignada'}</p><p>Documentación solicitada: {record.analysis.documentationRequested||'No consignada'}</p><p>Documentación revisada: {record.analysis.documentationReviewed||'No consignada'}</p>{record.analysis.fundsAssessment&&<details><summary>Antecedentes del análisis anterior</summary><p>{record.analysis.fundsAssessment}</p></details>}<p>Beneficiario final: {record.analysis.beneficialOwner||'No consignado'}</p><p className="font-medium">Decisión: {record.analysis.reasoning}</p>{record.status==='REPORTE_ROS'&&<p>ROS registrado: {record.analysis.rosReference} · {record.analysis.rosSubmittedAt}</p>}</section>}
+          {record.analysis&&<section className="surface p-4 space-y-2 text-xs"><h4 className="font-semibold">Análisis documentado</h4><p>{record.analysis.classification} · {new Date(record.analysis.reviewedAt).toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires'})} · {record.analysis.analyst}</p><p>{record.analysis.profileSummary}</p><p>Inusualidad: {record.analysis.unusualType||'No consignada'}</p><p>Documentación solicitada: {record.analysis.documentationRequested||'No consignada'}</p><p>Documentación revisada: {record.analysis.documentationReviewed||'No consignada'}</p>{record.analysis.fundsAssessment&&<details><summary>Antecedentes del análisis anterior</summary><p>{record.analysis.fundsAssessment}</p></details>}<p>Beneficiario final: {record.analysis.beneficialOwner||'No consignado'}</p><p className="font-medium">Decisión: {record.analysis.reasoning}</p>{record.status==='REPORTE_ROS'&&<p>ROS registrado: {record.analysis.rosReference} · {record.analysis.rosSubmittedAt}</p>}</section>}
           {/* Signatures & Seal Block */}
           <div className="pt-6 sm:pt-8 grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 text-center text-xs">
             <div className="border-t border-slate-300 pt-2 space-y-0.5">

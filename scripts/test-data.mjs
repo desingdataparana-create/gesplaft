@@ -68,7 +68,7 @@ try{
  const config=await call();assert.equal((await call('saveSettings',{criteria:config.data.criteria,factorWeights:config.data.factorWeights,thresholds:config.data.thresholds})).status,200,'settings persist');
  const org={shortName:'Organización QA',legalName:'Organización de prueba local',area:'Cumplimiento',taxId:'',address:'Dirección de prueba',email:'qa@example.com',phone:'3430000000',website:'https://example.com',logo:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j0xkAAAAASUVORK5CYII='};
  assert.equal((await call('saveOrganization',org)).status,200,'organization settings saved');
- assert.deepEqual((await call()).data.organization,org,'organization and logo persist');
+ assert.deepEqual({...((await call()).data.organization),operationTypes:undefined},{...org,operationTypes:undefined},'organization and logo persist');
  assert.equal((await call(null,null,'qa-other-user')).status,403,'organization requires membership');
  assert.equal((await call('saveOrganization',{...org,logo:'data:image/svg+xml;base64,PHN2Zz4='})).status,400,'active image formats rejected');
  assert.equal((await call('saveOrganization',{...org,logo:'data:image/png;base64,YWJj'})).status,400,'fake raster rejected');

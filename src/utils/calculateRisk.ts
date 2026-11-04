@@ -1,8 +1,8 @@
 import { simplifyRiskConfiguration } from './riskConfiguration';
-import type {RiskCriterion, FactorWeight, RiskLevel, RegulatoryThreshold, EvaluationRecord} from '../types';
-export function calculateRisk(criteria:RiskCriterion[],factorWeights:FactorWeight[], selectedCriteriaIds:string[], isPep:boolean, amountARS:number,thresholds:RegulatoryThreshold[]=[],context:{operationAt?:string;subjectType?:string;records?:EvaluationRecord[]}={}) {
+import type {RiskCriterion, FactorWeight, RiskLevel, RegulatoryThreshold, EvaluationRecord, OperationType} from '../types';
+export function calculateRisk(criteria:RiskCriterion[],factorWeights:FactorWeight[], selectedCriteriaIds:string[], isPep:boolean, amountARS:number,thresholds:RegulatoryThreshold[]=[],context:{operationAt?:string;subjectType?:string;records?:EvaluationRecord[];operationType?:OperationType}={}) {
     ({criteria, factorWeights, thresholds} = simplifyRiskConfiguration({criteria, factorWeights, thresholds}));
-    const selectedObj = criteria.filter((c) => c.active && selectedCriteriaIds.includes(c.id));
+    const selectedObj = criteria.filter((c) => c.active && !c.deletedAt && selectedCriteriaIds.includes(c.id));
     
     const catScores: Record<string, { avgScore: number; count: number; maxScore: number; weight: number }> = {};
 
@@ -37,7 +37,7 @@ export function calculateRisk(criteria:RiskCriterion[],factorWeights:FactorWeigh
     totalScore = Math.min(100, Math.max(10, Math.round(totalScore * 10) / 10));
 
     let lvl: RiskLevel = 'BAJO';
-    if (totalScore >= 75 || isPep || selectedCriteriaIds.includes('cli-07')) {
+    if (totalScore >= 75 || isPep || selectedObj.some(c=>['cli-03','cli-04','cli-07'].includes(c.id))) {
       lvl = totalScore >= 85 ? 'CRITICO' : 'ALTO';
     } else if (totalScore >= 40) {
       lvl = 'MEDIO';
@@ -54,18 +54,25 @@ export function calculateRisk(criteria:RiskCriterion[],factorWeights:FactorWeigh
     if (isPep) {
       alertsGenerated.push('Persona Expuesta Políticamente (PEP): Requiere debida diligencia reforzada.');
     }
+    const scope=context.operationType?.uifScope||'PISO';
     const thresholdChecks=thresholds.map(t=>({...t,total:amountARS,triggered:amountARS>=t.amountARS}));
     const triggered=thresholdChecks.filter(t=>t.triggered);
-    triggered.forEach(t=>alertsGenerated.push(`${t.title}: $${t.total.toLocaleString('es-AR')} / $${t.amountARS.toLocaleString('es-AR')} (${t.periodicity}). ${t.actionRequired}`));
-    if (selectedCriteriaIds.includes('geo-02')) {
+    if(scope==='PISO')triggered.forEach(t=>alertsGenerated.push(`${t.title}: $${t.total.toLocaleString('es-AR')} / $${t.amountARS.toLocaleString('es-AR')} (${t.periodicity}). ${t.actionRequired}`));
+    if (selectedObj.some(c=>c.id==='geo-02')) {
       alertsGenerated.push('Operación en zona de frontera internacional.');
     }
 
     const djofRequired = isPep || lvl === 'ALTO' || lvl === 'CRITICO';
-    const docRequired = triggered.some(t=>t.code==='UMB-ID-01') || djofRequired;
+    const meetsFloor=triggered.some(t=>t.code==='UMB-ID-01');
+    const identificationRequired=scope==='SIEMPRE'||scope==='PISO'&&meetsFloor;
+    const scopeReason=scope==='SIEMPRE'?'Identificación desde el inicio de la relación en línea.':scope==='NO_APLICA'?'Este tipo de operación no usa el piso monetario para definir su alcance.':meetsFloor?'Alcanza el piso UIF configurado.':'No alcanza el piso UIF configurado; el riesgo se informa para seguimiento.';
+    const docRequired = identificationRequired || djofRequired;
+    const categoryBreakdown=factorWeights.map(w=>({category:w.category,name:w.name,weight:w.weightPercentage,score:Math.round(((catScores[w.category].maxScore*.7+catScores[w.category].avgScore*.3)/5)*1000)/10,criteria:selectedObj.filter(c=>c.category===w.category).map(c=>c.name)}));
 
     return {
       thresholdChecks,
+      evaluationScope:{meetsFloor,identificationRequired,reason:scopeReason},
+      categoryBreakdown,
       weightedScore: totalScore,
       rawScore: Math.round(totalScore),
       riskLevel: lvl,
@@ -77,4 +84,4 @@ export function calculateRisk(criteria:RiskCriterion[],factorWeights:FactorWeigh
 
 }
 
-export function businessDate(v:string){const d=new Date(v);if(!Number.isFinite(d.getTime()))return '';const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d);return ['year','month','day'].map(k=>parts.find(p=>p.type===k)?.value).join('-');}
+export {businessDate} from './businessTime';

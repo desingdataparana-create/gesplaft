@@ -120,7 +120,12 @@ export interface EvaluationRecord {
   selectedCriteriaIds: string[];
   
   // Operation details
-  operationType: 'COBRO_PREMIO' | 'APUESTA_PRESENCIAL' | 'APUESTA_ONLINE' | 'CAMBIO_FICHAS' | 'ALTA_AGENCIA';
+  operationType: string;
+  operationTypeName?: string;
+  importReference?: string;
+  importRowFingerprint?: string;
+  evaluationScope?: {meetsFloor:boolean;identificationRequired:boolean;reason:string};
+  evaluationPolicyVersion?:string;
   amountARS: number;
   locationDepartment: string;
   channelName: string; // e.g. "Casino Mayor Paraná", "Agencia Oficial 412"
@@ -147,7 +152,16 @@ export interface RiskMatrixCell {
   label: string;
 }
 
+export interface OperationType {
+ code:string;
+ name:string;
+ active:boolean;
+ uifScope:'PISO'|'SIEMPRE'|'NO_APLICA';
+ productCriterionId?:string;
+}
+
 export interface OrganizationSettings {
+ operationTypes?:OperationType[];
  shortName:string;
  legalName:string;
  area:string;

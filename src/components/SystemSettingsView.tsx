@@ -1,9 +1,10 @@
 import React,{useState} from 'react';
 import {Building2,Upload,Trash2,Sun,Moon,Monitor,CheckCircle2,Save,Image} from 'lucide-react';
-import type {OrganizationSettings} from '../types';
+import {OperationSettings} from './OperationSettings';
+import type {OperationType,RiskCriterion,OrganizationSettings} from '../types';
 export type ThemeMode='light'|'dark'|'system';
-interface Props{organization:OrganizationSettings;onSave:(data:OrganizationSettings)=>Promise<void>;theme:ThemeMode;onThemeChange:(mode:ThemeMode)=>void;ready:boolean}
-export function SystemSettingsView({organization,onSave,theme,onThemeChange,ready}:Props){
+interface Props{criteria:RiskCriterion[];operationTypes:OperationType[];operationTypesVersion:string;canImport:boolean;onTypesSaved:(types:OperationType[],version:string)=>void;onImported:()=>Promise<void>;organization:OrganizationSettings;onSave:(data:OrganizationSettings)=>Promise<void>;theme:ThemeMode;onThemeChange:(mode:ThemeMode)=>void;ready:boolean}
+export function SystemSettingsView({organization,onSave,theme,onThemeChange,ready,criteria,operationTypes,operationTypesVersion,canImport,onTypesSaved,onImported}:Props){
  const [form,setForm]=useState(organization),[busy,setBusy]=useState(false),[processing,setProcessing]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false);
  const change=(key:keyof OrganizationSettings,value:string)=>{setForm(p=>({...p,[key]:value}));setSaved(false)};
  const upload=async(file?:File)=>{if(!file)return;setError('');setSaved(false);setProcessing(true);try{
@@ -13,6 +14,7 @@ export function SystemSettingsView({organization,onSave,theme,onThemeChange,read
  return <div className="max-w-5xl w-full mx-auto space-y-6">
   <div className="page-heading"><div><span className="eyebrow">PERSONALIZACIÓN</span><h1>Ajustes del sistema</h1><p>Tu organización, su identidad y la forma de ver el sistema.</p></div><div className="heading-icon"><Building2 size={26}/></div></div>
   <section className="surface p-5 sm:p-6"><div className="section-title"><span className="icon-tile violet"><Sun size={19}/></span><div><h2>Apariencia</h2><p>La preferencia se recuerda en este navegador.</p></div></div><div className="grid grid-cols-3 gap-3 mt-5">{([{id:'light',label:'Claro',Icon:Sun},{id:'dark',label:'Oscuro',Icon:Moon},{id:'system',label:'Automático',Icon:Monitor}] as const).map(({id,label,Icon})=><button key={id} type="button" aria-pressed={theme===id} onClick={()=>onThemeChange(id)} className={`theme-option ${theme===id?'selected':''}`}><span className={`theme-sample ${id}`}><span/><span/><span/></span><span className="flex items-center justify-center gap-2 text-xs font-medium"><Icon size={15}/>{label}</span></button>)}</div></section>
+  <OperationSettings criteria={criteria} types={operationTypes} version={operationTypesVersion} canImport={canImport} onTypesSaved={onTypesSaved} onImported={onImported}/>
   <form className="surface p-5 sm:p-6 space-y-6" onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');setSaved(false);try{await onSave(form);setSaved(true)}catch(err){setError((err as Error).message)}finally{setBusy(false)}}}>
    <div className="section-title"><span className="icon-tile blue"><Building2 size={19}/></span><div><h2>Datos de la organización</h2><p>Se aplican al encabezado, al pie y a la ficha de los expedientes.</p></div></div>
    <div className="logo-editor"><div className="logo-preview">{form.logo?<img src={form.logo} alt="Vista previa del logo"/>:<Image size={30} className="text-slate-400"/>}</div><div className="space-y-2"><div className="flex flex-wrap gap-2"><label className="button-secondary cursor-pointer"><Upload size={15}/>{processing?'Procesando…':'Cambiar logo'}<input type="file" aria-label="Cargar logo de la organización" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={processing||busy} onChange={e=>{void upload(e.target.files?.[0]);e.target.value=''}}/></label>{form.logo&&<button type="button" className="button-secondary" disabled={busy} onClick={()=>change('logo','')}><Trash2 size={14}/>Quitar</button>}</div><p className="text-xs text-slate-500">PNG, JPG o WebP. La imagen se adapta automáticamente.</p></div></div>

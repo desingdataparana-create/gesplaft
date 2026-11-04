@@ -1,3 +1,5 @@
+import {businessDateTimeInput} from '../utils/businessTime';
+import {parseImportDate} from '../utils/operationImport';
 import { SubjectEditor } from './SubjectsView';
 import { SubjectNameField } from './SubjectNameField';
 import { calculateRisk } from '../utils/calculateRisk';
@@ -6,7 +8,7 @@ import {
   RiskCriterion, 
   FactorWeight, 
   EvaluationRecord, 
-  RiskLevel, Subject
+  RiskLevel, Subject, OperationType
 } from '../types';
 import { 
   X,
@@ -27,6 +29,7 @@ import {
 } from 'lucide-react';
 
 interface RiskEvaluationModalProps {
+  operationTypes:OperationType[];
   canEditSubject?: boolean;
   thresholds:import('../types').RegulatoryThreshold[];
   records:EvaluationRecord[];
@@ -41,7 +44,7 @@ interface RiskEvaluationModalProps {
 }
 
 export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
-  thresholds,records,
+  thresholds,records,operationTypes,
   canEditSubject=true,
   isOpen,
   onClose,
@@ -52,10 +55,9 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   onViewDossier,
   initialSubjectData,
 }) => {
-  const [criterionCategory,setCriterionCategory]=useState<RiskCriterion['category']>('PRODUCTO');
   const [operationDate,setOperationDate]=useState('');
   const [conditionConfirmed,setConditionConfirmed]=useState(false);
-  const currentLocalDate=()=>{const now=new Date();return new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16)};
+  const currentLocalDate=()=>businessDateTimeInput();
   const [requestId,setRequestId]=useState('');
   const [subjectUpdatedAt,setSubjectUpdatedAt]=useState<string|undefined>();
   const [subjectId, setSubjectId] = useState('');
@@ -77,7 +79,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   const [isPep, setIsPep] = useState(false);
   const [pepDetails, setPepDetails] = useState('');
   const [activity, setActivity] = useState('');
-  const [operationType, setOperationType] = useState<'COBRO_PREMIO' | 'APUESTA_PRESENCIAL' | 'APUESTA_ONLINE' | 'CAMBIO_FICHAS' | 'ALTA_AGENCIA'>('COBRO_PREMIO');
+  const [operationType, setOperationType] = useState(operationTypes.find(t=>t.active)?.code||'');
   const [amountARS, setAmountARS] = useState<number>(0);
   const [department, setDepartment] = useState('');
   const [channelName, setChannelName] = useState('');
@@ -92,7 +94,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   const resetForm = () => {
     setRequestId(crypto.randomUUID());setSubjectUpdatedAt(initialSubjectData?.updatedAt);
     setEditingSubject(null);
-    setCriterionCategory('PRODUCTO');setOperationDate(currentLocalDate());setConditionConfirmed(false);
+    setOperationDate(currentLocalDate());setConditionConfirmed(false);
     setSubjectId(initialSubjectData?.id || '');
     setAddress(initialSubjectData?.address || '');setEmail(initialSubjectData?.email || '');setPhone(initialSubjectData?.phone || '');
 
@@ -102,8 +104,8 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     setIsPep(initialSubjectData?.pepStatus || false);
     setPepDetails(initialSubjectData?.pepDetails || '');
     setActivity(initialSubjectData?.activity || '');
-    setOperationType('COBRO_PREMIO'); setAmountARS(0); setDepartment('');
-    setChannelName(''); setNotes(''); setSelectedCriteriaIds(initialSubjectData?.clientCriteriaIds || []);
+    setOperationType(operationTypes.find(t=>t.active)?.code||''); setAmountARS(0); setDepartment('');
+    setChannelName(''); setNotes(''); setSelectedCriteriaIds([...(initialSubjectData?.clientCriteriaIds||[]),...(operationTypes.find(t=>t.active)?.productCriterionId?[operationTypes.find(t=>t.active)!.productCriterionId!]:[])]);
     setSavedRecord(null); setValidationError('');
   };
   useEffect(() => { if (isOpen) resetForm(); }, [initialSubjectData, isOpen]);
@@ -114,27 +116,20 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     setRequestId(crypto.randomUUID());
     setSubjectId(savedRecord.subjectId || '');
     setAmountARS(0);setDepartment('');setChannelName('');setNotes('');setSelectedCriteriaIds(prev=>prev.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE'));
-    setCriterionCategory('PRODUCTO');setOperationDate(currentLocalDate());setConditionConfirmed(false);setSavedRecord(null);setValidationError('');
+    setOperationDate(currentLocalDate());setConditionConfirmed(false);setSavedRecord(null);setValidationError('');
   };
 
-  // Toggle criterion selection
-  const handleToggleCriterion = (id: string) => {
-    setSelectedCriteriaIds((prev) => {
-      if (prev.includes(id)) {
-        return prev.filter((item) => item !== id);
-      } else {
-        return [...prev, id];
-      }
-    });
-  };
-
+  const setOperationCriterion=(category:RiskCriterion['category'],value:string)=>setSelectedCriteriaIds(previous=>[...previous.filter(id=>criteria.find(c=>c.id===id)?.category!==category),...(value?[value]:[])]);
+  const selectedType=operationTypes.find(t=>t.code===operationType&&t.active);
+  const complete=!!subjectId&&['CLIENTE','PRODUCTO','CANAL','GEOGRAFIA'].every(category=>criteria.some(c=>c.active&&!c.deletedAt&&c.category===category&&selectedCriteriaIds.includes(c.id)));
   // Scoring Calculation Engine
-  const { weightedScore, rawScore, riskLevel, dueDiligence, alerts, requiresDJOF, requiresDocumentation } = useMemo(() => {
-    return calculateRisk(criteria, factorWeights, selectedCriteriaIds, isPep, amountARS,thresholds,{operationAt:operationDate&&Number.isFinite(Date.parse(operationDate))?new Date(operationDate).toISOString():undefined,subjectType,records:records.filter(r=>r.subjectId===subjectId)});
-  }, [criteria, factorWeights, selectedCriteriaIds, isPep, amountARS,thresholds,operationDate,subjectType,records,subjectId]);
+  const { weightedScore, rawScore, riskLevel, dueDiligence, alerts, requiresDJOF, requiresDocumentation,evaluationScope,categoryBreakdown } = useMemo(() => {
+    return calculateRisk(criteria, factorWeights, selectedCriteriaIds, isPep, amountARS,thresholds,{operationAt:operationDate&&Number.isFinite(Date.parse(operationDate))?new Date(operationDate).toISOString():undefined,subjectType,operationType:selectedType,records:records.filter(r=>r.subjectId===subjectId)});
+  }, [criteria, factorWeights, selectedCriteriaIds, isPep, amountARS,thresholds,operationDate,subjectType,records,subjectId,selectedType]);
 
   const handleSave = async () => {
     if (savedRecord || isSaving) return;
+    if(!selectedType){setValidationError('Elegí un tipo de operación activo.');return;}
     if(!subjectId){setValidationError('Seleccioná un sujeto registrado o creá su ficha con «Nuevo sujeto».');return;}
     if(!department.trim() || !channelName.trim() || !Number.isFinite(amountARS) || amountARS<=0){setValidationError('Completá departamento, sala y un monto mayor a cero.');return;}
     if(!selectedCriteriaIds.some(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')){setValidationError('Completá los factores personales desde «Editar ficha del sujeto».');return;}
@@ -142,13 +137,14 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     if(!conditionConfirmed){setValidationError('Confirmá la condición del sujeto para esta operación.');return;}
     if(isPep && !pepDetails.trim()){setValidationError('Indicá el cargo o condición PEP evaluada.');return;}
     if(!operationDate || !Number.isFinite(new Date(operationDate).getTime())){setValidationError('Indicá la fecha y hora de la operación.');return;}
+    let operationAt:string;try{operationAt=parseImportDate(operationDate);}catch(e){setValidationError((e as Error).message);return;}
     setValidationError('');
     const newRecordId = requestId;
     const dossierNo = `EXP-PLA-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const newRecord: EvaluationRecord = {
       subjectUpdatedAt,
-      operationAt:new Date(operationDate).toISOString(),
+      operationAt,
       activityAtOperation:activity,
       conditionConfirmed,
       id: newRecordId,
@@ -166,6 +162,8 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
       activityOcupation: activity,
       selectedCriteriaIds,
       operationType,
+      operationTypeName:selectedType.name,
+      evaluationScope,
       amountARS,
       locationDepartment: department,
       channelName,
@@ -186,7 +184,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     finally{setIsSaving(false);}
   };
 
-  const currentThresholdStatus={text:requiresDJOF?'Requiere DJOF':requiresDocumentation?'Requiere documentación':'Por debajo del piso UIF',color:requiresDocumentation?'text-amber-800 bg-amber-50 border-amber-200':'text-slate-700 bg-slate-100 border-slate-200'};
+  const currentThresholdStatus={text:selectedType?.uifScope==='SIEMPRE'?'Identificación inicial':selectedType?.uifScope==='NO_APLICA'?'Sin piso monetario':evaluationScope.meetsFloor?'Alcanza piso UIF':'Debajo del piso UIF',color:requiresDocumentation?'text-amber-800 bg-amber-50 border-amber-200':'text-slate-700 bg-slate-100 border-slate-200'};
 
   if (!isOpen) return null;
 
@@ -295,19 +293,16 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                     }}/>
                     {subjectId&&<div className="sm:col-span-2 text-xs text-slate-500"><span className="font-medium text-teal-700">Ficha vinculada · {taxId}</span><details className="mt-2"><summary>Ver datos personales</summary><div className="mt-2 space-y-1"><p>{address||'Dirección pendiente'}</p><p>{email||'Correo pendiente'}</p><p>{phone||'Teléfono pendiente'}</p></div></details></div>}
                     {canEditSubject&&<div className="sm:col-span-2 flex flex-wrap gap-2"><button type="button" className="button-secondary" onClick={()=>setEditingSubject({subjectName:subjectId?'':subjectName})}><Plus size={15}/>Nuevo sujeto</button>{subjectId&&<button type="button" className="button-secondary" onClick={()=>setEditingSubject({id:subjectId,updatedAt:subjectUpdatedAt,subjectName,taxId,subjectType,address,email,phone,activity,pepStatus:isPep,pepDetails,clientCriteriaIds:selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')})}>Editar ficha</button>}</div>}
-                    <label className="field-label sm:col-span-2">Fecha y hora de la operación<input aria-label="Fecha y hora de la operación" type="datetime-local" value={operationDate} onChange={e=>setOperationDate(e.target.value)}/></label>
+                    <label className="field-label sm:col-span-2">Fecha y hora de la operación (Argentina)<input aria-label="Fecha y hora de la operación" type="datetime-local" value={operationDate} onChange={e=>setOperationDate(e.target.value)}/></label>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">Tipo de Operación</label>
                       <select
                         value={operationType}
-                        onChange={(e) => setOperationType(e.target.value as any)}
+                        onChange={e=>{const type=operationTypes.find(t=>t.code===e.target.value);setOperationType(e.target.value);setOperationCriterion('PRODUCTO',type?.productCriterionId||'');}}
                         className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium focus:outline-hidden focus:border-teal-500"
                       >
-                        <option value="COBRO_PREMIO">Cobro de Premio</option>
-                        <option value="APUESTA_PRESENCIAL">Apuesta Presencial en Casino</option>
-                        <option value="APUESTA_ONLINE">Apuesta en Plataforma Online</option>
-                        <option value="CAMBIO_FICHAS">Canje / Fichas de Juego</option>
-                        <option value="ALTA_AGENCIA">Alta de Agencia / Permisionario</option>
+                        <option value="">Seleccionar tipo de operación</option>
+                        {operationTypes.filter(t=>t.active).map(t=><option key={t.code} value={t.code}>{t.name}</option>)}
                       </select>
                     </div>
 
@@ -387,42 +382,8 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex flex-wrap gap-1">{([['PRODUCTO','Producto / servicio'],['CANAL','Canal'],['GEOGRAFIA','Geografía']] as const).map(([category,label])=><button type="button" key={category} onClick={()=>setCriterionCategory(category)} className={`px-2 py-1.5 text-[11px] rounded-md ${criterionCategory===category?'bg-teal-50 text-teal-800':'text-slate-500'}`}>{label} ({criteria.filter(c=>c.category===category&&selectedCriteriaIds.includes(c.id)).length})</button>)}</div>
-                  <p className="text-[11px] text-slate-400">Seleccioná los factores de esta operación. Las condiciones personales provienen de la ficha del sujeto.</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {criteria.filter(c => c.active && c.category===criterionCategory).map((item) => {
-                      const isSelected = selectedCriteriaIds.includes(item.id);
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => handleToggleCriterion(item.id)}
-                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5 select-none ${
-                            isSelected
-                              ? 'bg-teal-50 border-teal-400 text-teal-950 shadow-2xs'
-                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100/60'
-                          }`}
-                        >
-                          <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 mt-0.5 ${
-                            isSelected ? 'bg-teal-600 border-teal-600 text-white' : 'border-slate-300 bg-white'
-                          }`}>
-                            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between text-[10px] mb-0.5">
-                              <span className="font-mono text-slate-400">{item.code}</span>
-                              <span className={`font-bold ${item.score >= 4 ? 'text-rose-600' : 'text-slate-500'}`}>
-                                {item.score} pt
-                              </span>
-                            </div>
-                            <div className="text-xs font-semibold leading-tight text-slate-900 line-clamp-2">
-                              {item.name}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <p className="text-xs text-slate-500">Los parámetros del sujeto se toman de su ficha. Completá solamente las condiciones de esta operación.</p>
+                  <div className="grid sm:grid-cols-3 gap-3">{([['PRODUCTO','Producto / juego'],['CANAL','Canal de la operación'],['GEOGRAFIA','Zona geográfica']] as const).map(([category,label])=><label className="field-label" key={category}>{label}<select value={selectedCriteriaIds.find(id=>criteria.some(c=>c.id===id&&c.category===category))||''} onChange={e=>setOperationCriterion(category,e.target.value)}><option value="">Seleccionar</option>{criteria.filter(c=>c.active&&!c.deletedAt&&c.category===category).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>)}</div>
 
                   {/* Observaciones */}
                   <div className="pt-2">
@@ -458,7 +419,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-4xl font-black font-mono tabular-nums text-slate-900 tracking-tight">
-                        {weightedScore}
+                        {complete?weightedScore:'—'}
                         <span className="text-sm text-slate-400 font-normal"> /100</span>
                       </div>
                       <div className="text-[11px] text-slate-500 font-medium">
@@ -468,15 +429,15 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
 
                     <div className="text-right">
                       <span className={`inline-block px-3 py-1 rounded-xl text-xs font-black tracking-wide ${
-                        riskLevel === 'CRITICO' ? 'bg-rose-600 text-white' :
+                        !complete ? 'bg-slate-100 text-slate-600' : riskLevel === 'CRITICO' ? 'bg-rose-600 text-white' :
                         riskLevel === 'ALTO' ? 'bg-orange-500 text-white' :
                         riskLevel === 'MEDIO' ? 'bg-amber-400 text-slate-900' :
                         'bg-emerald-600 text-white'
                       }`}>
-                        RIESGO {riskLevel}
+                        {complete?`RIESGO ${riskLevel}`:'EVALUACIÓN PENDIENTE'}
                       </span>
                       <div className="text-[11px] font-bold text-slate-700 mt-1">
-                        Diligencia: {dueDiligence}
+                        Diligencia: {complete?dueDiligence:'Completar datos'}
                       </div>
                     </div>
                   </div>
@@ -492,10 +453,12 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                   </div>
 
                   <div className="surface p-3 text-xs text-slate-600"><span className="font-medium">Piso UIF: </span>{thresholds[0]?`$ ${thresholds[0].amountARS.toLocaleString('es-AR')} por operación`:'Pendiente de configurar'}</div>
+                  <p className="text-xs text-slate-600">{evaluationScope.reason}</p>
+                  <details className="surface p-3 text-xs text-slate-600"><summary>Cómo se obtiene el nivel de riesgo</summary>{categoryBreakdown.map(f=><p key={f.category} className="mt-2">{f.name}: {f.criteria.join(' · ')||'Pendiente'} · peso {f.weight}%</p>)}<p className="mt-3">El importe define el alcance monetario. El riesgo combina los parámetros del sujeto y de la operación; no determina por sí solo una sospecha ni un ROS.</p></details>
                   {/* Medidas Exigibles */}
                   <div className="space-y-2 pt-1 text-xs">
                     <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      Exigencias Normativas para este Caso
+                      Resultado de la evaluación
                     </div>
 
                     <div className={`p-2.5 rounded-xl border flex items-center justify-between ${

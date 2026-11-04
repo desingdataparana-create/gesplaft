@@ -174,7 +174,7 @@ export const ExportReportsModal: React.FC<ExportReportsModalProps> = ({
       const filename = `Reporte_Expedientes_PLAFT_${rangeTag}_${timestamp}.xml`;
       const xml = generateRecordsXML(filteredRecords, criteria, {
         title: 'Reporte de Evaluaciones y Monitoreo de Riesgo PLA/FT',
-        generatedAt: new Date().toLocaleString('es-AR'),
+        generatedAt: new Date().toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires'}),
         generatedBy: organization.shortName,
         startDate: startDate || 'Inicio Histórico',
         endDate: endDate || 'Actualidad',
@@ -204,7 +204,7 @@ export const ExportReportsModal: React.FC<ExportReportsModalProps> = ({
       const filename = `Reporte_Expedientes_PLAFT_${rangeTag}_${timestamp}.xls`;
       const xls = generateRecordsXLS(filteredRecords, {
         title: 'Reporte de Evaluaciones y Monitoreo de Riesgo PLA/FT',
-        generatedAt: new Date().toLocaleString('es-AR'),
+        generatedAt: new Date().toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires'}),
         generatedBy: organization.shortName,
         startDate: startDate || 'Inicio Histórico',
         endDate: endDate || 'Actualidad',

@@ -1,0 +1,49 @@
+import {spawn} from 'node:child_process';import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';
+const temp=await mkdtemp(join(tmpdir(),'gesplaft-import-')),origin='http://127.0.0.1:8796',base=origin+'/gesplaft',env={...process.env,GESPLAFT_TEST_DATABASE:join(temp,'pg'),PUBLIC_ORIGIN:origin,PORT:'8796',NODE_ENV:'test'};let server,log='';
+function run(args,input=''){return new Promise((yes,no)=>{const p=spawn(process.execPath,args,{env,stdio:['pipe','pipe','pipe']});let output='';p.stdout.on('data',d=>output+=d);p.stderr.on('data',d=>output+=d);p.stdin.end(input);p.on('exit',c=>c?no(Error(output)):yes(output));});}
+async function login(email,password){const r=await fetch(base+'/auth/login',{method:'POST',headers:{Origin:origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({email,password}),redirect:'manual'});return r.headers.get('set-cookie')?.split(';')[0]||'';}
+async function api(cookie,action,payload,path='/api/data'){const r=await fetch(base+path,{method:action?'POST':'GET',headers:{Cookie:cookie,...(action?{Origin:origin,'Content-Type':'application/json'}:{})},...(action?{body:JSON.stringify(path==='/api/data'?{action,payload}:payload)}:{})});return {status:r.status,data:await r.json()};}
+try{
+ await run(['portable/migrate.mjs']);await run(['portable/admin.mjs','qa-import@example.com'],'Fictional-Import-2026\n');
+ server=spawn(process.execPath,['dist-vps/server/server.mjs'],{env,stdio:['ignore','pipe','pipe']});for(const s of [server.stdout,server.stderr])s.on('data',d=>log+=d);
+ let ready=false;for(let i=0;i<90;i++){try{if((await fetch(base+'/api/health')).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,300));}assert.ok(ready,log);
+ const cookie=await login('qa-import@example.com','Fictional-Import-2026');assert.ok(cookie);
+ let state=(await api(cookie)).data;
+ const config={criteria:state.criteria,factorWeights:state.factorWeights,thresholds:state.thresholds.map(t=>({...t,amountARS:1000}))};assert.equal((await api(cookie,'saveSettings',config)).status,200);
+ const types=[...state.organization.operationTypes,{code:'PREMIO_TEST',name:'Premio de prueba',active:true,uifScope:'PISO',productCriterionId:'prod-04'}];
+ let saved=await api(cookie,'saveOperationTypes',{version:state.operationTypesVersion,types});assert.equal(saved.status,200,JSON.stringify(saved));
+ assert.equal((await api(cookie,'saveOperationTypes',{version:state.operationTypesVersion,types})).status,409,'stale catalog rejected');
+ let version=saved.data.operationTypesVersion;
+ assert.equal((await api(cookie,'saveOperationTypes',{version,types:[...types,types[0]]})).status,400,'duplicate codes rejected');
+ assert.equal((await api(cookie,'saveOperationTypes',{version,types:types.map(t=>({...t,active:false}))})).status,400,'catalog cannot disable every type');
+ const org=saved.data.organization;assert.equal((await api(cookie,'saveOrganization',{...org,area:'Área QA actualizada'})).status,200);assert.equal((await api(cookie)).data.organization.operationTypes.length,6,'organization form preserves custom catalog');
+ const row={_fila:2,referencia:'QA-PAGO-001',documento:'00000011',nombre:'Persona de importación QA',tipo_sujeto:'PERSONA_FISICA',actividad:'Empleado',pep:'NO',criterios_sujeto:'CLI-01',tipo_operacion:'PREMIO_TEST',fecha_operacion:'2026-11-01 14:30',importe_ars:'1000',departamento:'Paraná',sala:'Sala QA',producto:'PROD-04',canal:'CAN-03',zona:'GEO-01'};
+ const rows=[row,{...row,_fila:3,referencia:'QA-PAGO-002',nombre:'',tipo_sujeto:'',actividad:'',pep:'',criterios_sujeto:'',importe_ars:'999.99'}];
+ const preview=await api(cookie,'previewOperationsImport',{rows});assert.equal(preview.status,200,JSON.stringify(preview));assert.equal(preview.data.errors,0,JSON.stringify(preview));assert.equal(preview.data.newCount,2);assert.equal(preview.data.subjectCount,1);
+ assert.equal((await api(cookie)).data.subjects.length,0,'preview does not write subjects');
+ assert.equal((await api(cookie,'importOperations',{rows,fingerprint:preview.data.fingerprint})).status,400,'explicit review required');
+ assert.equal((await api(cookie,'importOperations',{rows,fingerprint:'stale',confirmed:true})).status,409);
+ const invalid=[row,{...row,_fila:3,referencia:'BAD',documento:'00000012',fecha_operacion:'2026-02-31 14:30'}];
+ const badPreview=await api(cookie,'previewOperationsImport',{rows:invalid});assert.equal(badPreview.data.errors,1);
+ assert.equal((await api(cookie,'importOperations',{rows:invalid,fingerprint:badPreview.data.fingerprint,confirmed:true})).status,400);
+ assert.equal((await api(cookie)).data.subjects.length,0,'one invalid row prevents every write');
+ const repeated=await api(cookie,'previewOperationsImport',{rows:[row,{...row,_fila:3}]});assert.equal(repeated.data.errors,1,'reference repeated within file rejected');
+ const parallel=await Promise.all([api(cookie,'importOperations',{rows,fingerprint:preview.data.fingerprint,confirmed:true}),api(cookie,'importOperations',{rows,fingerprint:preview.data.fingerprint,confirmed:true})]);
+ assert.ok(parallel.every(r=>r.status===200),JSON.stringify(parallel));assert.equal(parallel.reduce((n,r)=>n+r.data.imported,0),2,'concurrent retries do not duplicate records');
+ state=(await api(cookie)).data;assert.equal(state.subjects.length,1);assert.equal(state.records.length,2);
+ const first=state.records.find(r=>r.importReference==='QA-PAGO-001'),second=state.records.find(r=>r.importReference==='QA-PAGO-002');assert.equal(first.evaluationScope.meetsFloor,true);assert.equal(second.evaluationScope.meetsFloor,false);assert.equal(first.riskLevel,'BAJO','floor does not create high risk');assert.equal(first.status,'PENDIENTE','floor does not create ROS');assert.equal(first.operationAt,'2026-11-01T17:30:00.000Z','Argentina timestamp normalized');
+ const replay=await api(cookie,'previewOperationsImport',{rows});assert.equal(replay.data.skipped,2);
+ const semantic=await api(cookie,'previewOperationsImport',{rows:[{...row,fecha_operacion:'2026-11-01T14:30:00',importe_ars:'1000,00'}]});assert.equal(semantic.data.skipped,1,'equivalent Excel/CSV dates and decimals are idempotent');
+ const conflict=await api(cookie,'previewOperationsImport',{rows:[{...row,importe_ars:'2000'}]});assert.equal(conflict.data.errors,1,'same reference with changed operation rejected');
+ const mismatch=await api(cookie,'previewOperationsImport',{rows:[{...row,referencia:'NEW',actividad:'Actividad contradictoria'}]});assert.equal(mismatch.data.errors,1,'existing master identity is not overwritten');
+ const person=state.subjects[0],record={operationType:'PREMIO_TEST',operationAt:first.operationAt,conditionConfirmed:true,amountARS:1000,locationDepartment:'Paraná',channelName:'Sala QA',selectedCriteriaIds:['prod-04','can-03','geo-01'],notes:'Prueba manual equivalente',subjectUpdatedAt:person.updatedAt};
+ const manual=await api(cookie,'saveEvaluation',{requestId:randomUUID(),subjectId:person.id,record});assert.equal(manual.status,201,JSON.stringify(manual));for(const key of ['riskLevel','weightedScore','requiresDocumentation','requiresDJOF','evaluationPolicyVersion'])assert.deepEqual(manual.data.record[key],first[key],key+' consistent in both paths');
+ assert.equal((await api(cookie,'saveEvaluation',{requestId:randomUUID(),subjectId:person.id,record:{...record,selectedCriteriaIds:['prod-01','prod-04','can-03','geo-01']}})).status,409,'contradictory operation criteria rejected');
+ saved=await api(cookie,'saveOperationTypes',{version,types:types.map(t=>t.code==='PREMIO_TEST'?{...t,name:'Premio renombrado'}:t)});assert.equal(saved.status,200);version=saved.data.operationTypesVersion;
+ assert.equal((await api(cookie)).data.records.find(r=>r.id===first.id).operationTypeName,'Premio de prueba','historical type label retained');
+ saved=await api(cookie,'saveOperationTypes',{version,types:types.map(t=>t.code==='PREMIO_TEST'?{...t,active:false}:t)});assert.equal(saved.status,200);
+ assert.equal((await api(cookie,'saveEvaluation',{requestId:randomUUID(),subjectId:person.id,record})).status,409,'removed type cannot be used');
+ const user=await api(cookie,true,{email:'qa-restricted@example.com',name:'Operador',role:'OPERADOR',active:true,grants:{ajustes:'write',expedientes:'write',sujetos:'read'}},'/api/users');assert.equal(user.status,200);
+ await api(cookie,true,{id:user.data.user.id,password:'Fictional-Restricted-2026'},'/api/users/password');const restricted=await login('qa-restricted@example.com','Fictional-Restricted-2026');assert.equal((await api(restricted,'previewOperationsImport',{rows})).status,403,'import requires permission to create subjects');
+ console.log('PASS: tipos editables, conflictos de catálogo, Excel/CSV normalizados, vista previa sin escrituras, validación integral, atomicidad, reintentos concurrentes, deduplicación, identidad, misma evaluación manual/importada y permisos.');
+}catch(e){console.error(e);console.error(log.slice(-2200));process.exitCode=1;}finally{if(server){server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));}await rm(temp,{recursive:true,force:true});}

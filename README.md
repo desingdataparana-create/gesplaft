@@ -50,3 +50,6 @@ Los parámetros iniciales son de demostración y deben validarse metodológicame
 Piso UIF único, alta de sujeto integrada en Nuevo expediente, cuatro factores EBR y análisis sin los campos de perfil y origen/destino retirados. Ver `deploy/REVISION_CARGA_SIMPLIFICADA.md`.
 
 `deploy/instalar-carga-test.sh SHA` verifica la revisión instalada, los hashes, el proceso y la base de pruebas, respalda configuración, PostgreSQL y artefactos, y actualiza únicamente `gesplaft-test`. No requiere compilar, migrar SQL ni recargar Nginx.
+
+## Importación y evaluación
+Importación Excel/CSV con plantilla, vista previa y confirmación; catálogo de tipos editable y evaluación unificada por sujeto y operación. Ver deploy/REVISION_IMPORTACION.md.

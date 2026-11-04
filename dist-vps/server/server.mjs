@@ -26,8 +26,40 @@ __export(route_exports, {
   dynamic: () => dynamic
 });
 
+// app/api/data/importOperations.ts
+import { z as z2 } from "zod";
+
+// src/utils/operationImport.ts
+var IMPORT_HEADERS = ["referencia", "documento", "nombre", "tipo_sujeto", "actividad", "pep", "detalle_pep", "criterios_sujeto", "tipo_operacion", "fecha_operacion", "importe_ars", "departamento", "sala", "producto", "canal", "zona", "direccion", "email", "telefono", "notas"];
+var normalizeText = (value) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+function parseImportAmount(value) {
+  if (!/^\d+(?:[.,]\d{1,2})?$/.test(value)) throw Error("Importe: us\xE1 n\xFAmeros sin separador de miles y hasta dos decimales.");
+  const n = Number(value.replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0 || n > 1e15) throw Error("El importe debe ser mayor a cero.");
+  return n;
+}
+function parseImportDate(value) {
+  let v = value.trim().replace(" ", "T");
+  if (/^\d{2}\/\d{2}\/\d{4}T\d{2}:\d{2}(:\d{2})?$/.test(v)) {
+    const [date, time] = v.split("T"), [d, m, y] = date.split("/");
+    v = `${y}-${m}-${d}T${time}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(v)) v += "-03:00";
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/.test(v) || !Number.isFinite(Date.parse(v))) throw Error("Fecha: us\xE1 AAAA-MM-DD HH:mm (hora argentina).");
+  const day = v.slice(0, 10), test = (/* @__PURE__ */ new Date(day + "T12:00:00Z")).toISOString().slice(0, 10);
+  if (day !== test) throw Error("La fecha no existe.");
+  if (Date.parse(v) > Date.now() + 6e4) throw Error("La operaci\xF3n no puede tener fecha futura.");
+  return new Date(v).toISOString();
+}
+
+// src/utils/validation.ts
+import { z } from "zod";
+var subjectTypes = ["PERSONA_FISICA", "PERSONA_JURIDICA", "AGENCIA"];
+var subjectSchema = z.object({ id: z.string().optional(), updatedAt: z.string().optional(), subjectName: z.string().trim().min(2).max(200), taxId: z.string().trim().min(7).max(20), subjectType: z.enum(subjectTypes), address: z.string().trim().max(500).default(""), email: z.union([z.literal(""), z.string().trim().email().max(254)]).default(""), phone: z.string().trim().max(40).default(""), activity: z.string().trim().min(2).max(200), pepStatus: z.boolean(), pepDetails: z.string().max(1e3).optional(), clientCriteriaIds: z.array(z.string()).max(100).default([]) }).refine((s) => /^\d{7,11}$/.test(s.taxId.replace(/\D/g, "")), { message: "Revis\xE1 el DNI/CUIT: debe tener entre 7 y 11 d\xEDgitos." }).refine((s) => !s.phone || s.phone.replace(/\D/g, "").length >= 6, { message: "Revis\xE1 el tel\xE9fono." }).refine((s) => !s.clientCriteriaIds.includes("cli-03") || s.pepStatus, { message: "Marc\xE1 la condici\xF3n PEP si seleccion\xE1s ese par\xE1metro personal." }).refine((s) => !s.pepStatus || !!s.pepDetails?.trim(), { message: "Indic\xE1 el cargo o condici\xF3n PEP en la ficha del sujeto." });
+var recordSchema = z.object({ subjectUpdatedAt: z.string().optional(), operationType: z.string().trim().min(1).max(80), amountARS: z.number().finite().positive().max(1e15).multipleOf(0.01), locationDepartment: z.string().trim().min(1).max(200), channelName: z.string().trim().min(1).max(200), selectedCriteriaIds: z.array(z.string()).min(1).max(200), notes: z.string().max(1e4) });
+var operationSchema = recordSchema.extend({ operationAt: z.string().datetime().refine((v) => Date.parse(v) <= Date.now() + 6e4, { message: "La operaci\xF3n no puede tener fecha futura." }), conditionConfirmed: z.literal(true, { error: "Confirm\xE1 la condici\xF3n del sujeto para esta operaci\xF3n." }), pepStatus: z.boolean(), pepDetails: z.string().max(1e3).optional(), activityAtOperation: z.string().trim().min(2).max(200) }).refine((r) => !r.pepStatus || !!r.pepDetails?.trim(), { message: "Indic\xE1 el cargo o condici\xF3n PEP evaluada." });
+
 // src/utils/riskConfiguration.ts
-var EBR_CATEGORIES = ["CLIENTE", "PRODUCTO", "CANAL", "GEOGRAFIA"];
 var UIF_FLOOR_CODE = "UMB-ID-01";
 function simplifyRiskConfiguration(config) {
   const weights = config.factorWeights.filter((w) => w.category !== "OPERACIONAL");
@@ -49,6 +81,194 @@ function simplifyRiskConfiguration(config) {
     }))
   };
 }
+
+// src/utils/calculateRisk.ts
+function calculateRisk(criteria, factorWeights, selectedCriteriaIds, isPep, amountARS, thresholds = [], context = {}) {
+  ({ criteria, factorWeights, thresholds } = simplifyRiskConfiguration({ criteria, factorWeights, thresholds }));
+  const selectedObj = criteria.filter((c) => c.active && !c.deletedAt && selectedCriteriaIds.includes(c.id));
+  const catScores = {};
+  factorWeights.forEach((fw) => {
+    const itemsInCat = selectedObj.filter((c) => c.category === fw.category);
+    if (itemsInCat.length > 0) {
+      const maxScore = Math.max(...itemsInCat.map((c) => c.score));
+      const avg = itemsInCat.reduce((acc, curr) => acc + curr.score, 0) / itemsInCat.length;
+      catScores[fw.category] = {
+        avgScore: avg,
+        maxScore,
+        count: itemsInCat.length,
+        weight: fw.weightPercentage
+      };
+    } else {
+      catScores[fw.category] = {
+        avgScore: 1,
+        maxScore: 1,
+        count: 0,
+        weight: fw.weightPercentage
+      };
+    }
+  });
+  let totalScore = 0;
+  factorWeights.forEach((fw) => {
+    const data = catScores[fw.category];
+    const categoryNormalized = (data.maxScore * 0.7 + data.avgScore * 0.3) / 5 * 100;
+    totalScore += categoryNormalized * (fw.weightPercentage / 100);
+  });
+  totalScore = Math.min(100, Math.max(10, Math.round(totalScore * 10) / 10));
+  let lvl = "BAJO";
+  if (totalScore >= 75 || isPep || selectedObj.some((c) => ["cli-03", "cli-04", "cli-07"].includes(c.id))) {
+    lvl = totalScore >= 85 ? "CRITICO" : "ALTO";
+  } else if (totalScore >= 40) {
+    lvl = "MEDIO";
+  }
+  let dd = "SIMPLIFICADA";
+  if (lvl === "ALTO" || lvl === "CRITICO") {
+    dd = "REFORZADA";
+  } else if (lvl === "MEDIO") {
+    dd = "ESTANDAR";
+  }
+  const alertsGenerated = [];
+  if (isPep) {
+    alertsGenerated.push("Persona Expuesta Pol\xEDticamente (PEP): Requiere debida diligencia reforzada.");
+  }
+  const scope = context.operationType?.uifScope || "PISO";
+  const thresholdChecks = thresholds.map((t) => ({ ...t, total: amountARS, triggered: amountARS >= t.amountARS }));
+  const triggered = thresholdChecks.filter((t) => t.triggered);
+  if (scope === "PISO") triggered.forEach((t) => alertsGenerated.push(`${t.title}: $${t.total.toLocaleString("es-AR")} / $${t.amountARS.toLocaleString("es-AR")} (${t.periodicity}). ${t.actionRequired}`));
+  if (selectedObj.some((c) => c.id === "geo-02")) {
+    alertsGenerated.push("Operaci\xF3n en zona de frontera internacional.");
+  }
+  const djofRequired = isPep || lvl === "ALTO" || lvl === "CRITICO";
+  const meetsFloor = triggered.some((t) => t.code === "UMB-ID-01");
+  const identificationRequired = scope === "SIEMPRE" || scope === "PISO" && meetsFloor;
+  const scopeReason = scope === "SIEMPRE" ? "Identificaci\xF3n desde el inicio de la relaci\xF3n en l\xEDnea." : scope === "NO_APLICA" ? "Este tipo de operaci\xF3n no usa el piso monetario para definir su alcance." : meetsFloor ? "Alcanza el piso UIF configurado." : "No alcanza el piso UIF configurado; el riesgo se informa para seguimiento.";
+  const docRequired = identificationRequired || djofRequired;
+  const categoryBreakdown = factorWeights.map((w) => ({ category: w.category, name: w.name, weight: w.weightPercentage, score: Math.round((catScores[w.category].maxScore * 0.7 + catScores[w.category].avgScore * 0.3) / 5 * 1e3) / 10, criteria: selectedObj.filter((c) => c.category === w.category).map((c) => c.name) }));
+  return {
+    thresholdChecks,
+    evaluationScope: { meetsFloor, identificationRequired, reason: scopeReason },
+    categoryBreakdown,
+    weightedScore: totalScore,
+    rawScore: Math.round(totalScore),
+    riskLevel: lvl,
+    dueDiligence: dd,
+    alerts: alertsGenerated,
+    requiresDJOF: djofRequired,
+    requiresDocumentation: docRequired
+  };
+}
+
+// src/utils/evaluationRecord.ts
+var EVALUATION_POLICY_VERSION = "2026-11-operacion-sujeto-v2";
+function resolveOperationCriteria(config, person, submitted) {
+  if (person.clientCriteriaIds?.includes("cli-03") && !person.pepStatus) throw Error("La ficha tiene un par\xE1metro PEP incompatible con su condici\xF3n. Corregila en Sujetos.");
+  const operationIds = submitted.filter((id) => !config.criteria.some((c) => c.id === id && c.category === "CLIENTE"));
+  const ids = [.../* @__PURE__ */ new Set([...operationIds, ...person.clientCriteriaIds || []])];
+  if (ids.some((id) => !config.criteria.some((c) => c.id === id && c.active && !c.deletedAt))) throw Error("Uno de los criterios no est\xE1 activo. Revis\xE1 la selecci\xF3n.");
+  if (!config.criteria.some((c) => c.category === "CLIENTE" && ids.includes(c.id))) throw Error("Complet\xE1 los par\xE1metros personales en la ficha del sujeto.");
+  for (const category of ["PRODUCTO", "CANAL", "GEOGRAFIA"]) {
+    if (config.criteria.filter((c) => c.category === category && ids.includes(c.id)).length !== 1) throw Error("Eleg\xED un producto/juego, un canal y una zona geogr\xE1fica para la operaci\xF3n.");
+  }
+  return ids;
+}
+function buildEvaluationRecord(input, person, config, type, meta) {
+  if (type.uifScope === "PISO" && !config.thresholds.some((t) => t.code === "UMB-ID-01" && Number.isFinite(t.amountARS) && t.amountARS > 0)) throw Error("Configur\xE1 un piso UIF v\xE1lido antes de evaluar este tipo de operaci\xF3n.");
+  const selectedCriteriaIds = resolveOperationCriteria(config, person, input.selectedCriteriaIds);
+  const result = calculateRisk(config.criteria, config.factorWeights, selectedCriteriaIds, person.pepStatus, input.amountARS, config.thresholds, { operationType: type });
+  return { ...input, selectedCriteriaIds, id: meta.id, requestFingerprint: meta.fingerprint, dossierNumber: `EXP-PLA-${new Date(meta.now).getFullYear()}-${meta.id.slice(0, 8).toUpperCase()}`, timestamp: meta.now, conditionConfirmed: true, conditionReviewedAt: meta.now, evaluator: meta.evaluator, evaluatorRole: meta.role, subjectId: person.id, subjectUpdatedAt: person.updatedAt, subjectName: person.subjectName, taxId: person.taxId, subjectType: person.subjectType, address: person.address, email: person.email, phone: person.phone, activityOcupation: person.activity, activityAtOperation: person.activity, pepStatus: person.pepStatus, pepDetails: person.pepDetails, rawScore: result.rawScore, weightedScore: result.weightedScore, riskLevel: result.riskLevel, dueDiligenceLevel: result.dueDiligence, status: "PENDIENTE", requiresDJOF: result.requiresDJOF, requiresDocumentation: result.requiresDocumentation, alerts: result.alerts, analysisVersion: 0, criteriaSnapshot: config.criteria.filter((c) => selectedCriteriaIds.includes(c.id)), weightsSnapshot: config.factorWeights, thresholdsSnapshot: config.thresholds, operationTypeName: type.name, evaluationScope: result.evaluationScope, evaluationPolicyVersion: EVALUATION_POLICY_VERSION };
+}
+
+// app/api/data/importOperations.ts
+var rawSchema = z2.array(z2.object(Object.fromEntries(IMPORT_HEADERS.map((h) => [h, z2.string().max(h === "notas" ? 1e4 : 1e3).optional()]))).extend({ _fila: z2.number().int().min(2).max(1e5) }).strict()).min(1).max(200);
+async function digest(value) {
+  return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map((n) => n.toString(16).padStart(2, "0")).join("");
+}
+async function uuid(value) {
+  const h = await digest(value);
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+async function operationTypesVersion(types) {
+  return digest(JSON.stringify(types));
+}
+async function prepareOperationsImport(raw, ownerId, people, existing, config, types, actor) {
+  const rows = rawSchema.parse(raw);
+  const seen = /* @__PURE__ */ new Set(), byDoc = new Map(people.map((p) => [p.taxId.replace(/\D/g, ""), p])), newSubjects = /* @__PURE__ */ new Map(), records = [], preview = [];
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  for (const row of rows) {
+    const view = { fila: row._fila, referencia: row.referencia || "", sujeto: row.nombre || "", documento: row.documento || "", estado: "ERROR" };
+    try {
+      const ref = normalizeText(row.referencia || "");
+      if (!ref || ref.length > 100) throw Error("Indic\xE1 una referencia \xFAnica de hasta 100 caracteres.");
+      if (seen.has(ref)) throw Error("Referencia repetida dentro del archivo.");
+      seen.add(ref);
+      const canonical = IMPORT_HEADERS.map((h) => {
+        const value = (row[h] || "").trim();
+        if (h === "referencia") return [h, ref];
+        if (h === "documento") return [h, value.replace(/\D/g, "")];
+        if (h === "fecha_operacion") return [h, parseImportDate(value)];
+        if (h === "importe_ars") return [h, parseImportAmount(value)];
+        if (h === "tipo_operacion") return [h, types.find((t) => normalizeText(t.code) === normalizeText(value) || normalizeText(t.name) === normalizeText(value))?.code || normalizeText(value)];
+        if (["producto", "canal", "zona"].includes(h)) return [h, config.criteria.find((c) => c.id === value || normalizeText(c.code) === normalizeText(value))?.code || normalizeText(value)];
+        if (h === "criterios_sujeto") return [h, value ? value.split("|").map((v) => config.criteria.find((c) => c.id === v.trim() || normalizeText(c.code) === normalizeText(v))?.code || normalizeText(v)).sort() : []];
+        return [h, h === "notas" ? value : normalizeText(value)];
+      });
+      const rowFingerprint = await digest(JSON.stringify(canonical));
+      const id = await uuid(ownerId + ":import:" + ref), previous = existing.find((r) => r.id === id);
+      if (previous) {
+        if (previous.importRowFingerprint !== rowFingerprint) throw Error("Esta referencia ya se import\xF3 con otros datos.");
+        Object.assign(view, { estado: "YA_IMPORTADA", sujeto: previous.subjectName, importe: previous.amountARS, riesgo: previous.riskLevel, puntaje: previous.weightedScore, alcance: previous.evaluationScope?.reason });
+        preview.push(view);
+        continue;
+      }
+      const document = row.documento || "";
+      if (!/^[\d.\-\s]+$/.test(document) || !/^\d{7,11}$/.test(document.replace(/\D/g, ""))) throw Error("Documento: deben ser entre 7 y 11 d\xEDgitos.");
+      const key = document.replace(/\D/g, "");
+      const criterion = (value, category) => {
+        const found = config.criteria.find((c) => c.active && !c.deletedAt && c.category === category && (c.id === value || normalizeText(c.code) === normalizeText(value)));
+        if (!found) throw Error(`Criterio de ${category.toLowerCase()} no v\xE1lido: ${value || "(vac\xEDo)"}.`);
+        return found.id;
+      };
+      const personal = row.criterios_sujeto?.trim() ? row.criterios_sujeto.split("|").map((v) => criterion(v.trim(), "CLIENTE")) : void 0;
+      let person = byDoc.get(key);
+      if (person) {
+        const comparisons = [["nombre", row.nombre, person.subjectName], ["tipo de sujeto", row.tipo_sujeto, person.subjectType], ["actividad", row.actividad, person.activity], ["detalle PEP", row.detalle_pep, person.pepDetails], ["domicilio", row.direccion, person.address], ["correo", row.email, person.email], ["tel\xE9fono", row.telefono, person.phone]];
+        for (const [label, value, stored] of comparisons) if (value && normalizeText(value) !== normalizeText(stored || "")) throw Error(`El ${label} no coincide con la ficha existente. Revisala en Sujetos.`);
+        if (row.pep && (!["SI", "NO"].includes(normalizeText(row.pep)) || normalizeText(row.pep) === "SI" !== person.pepStatus)) throw Error("La condici\xF3n PEP no coincide con la ficha existente.");
+        if (personal && [...new Set(personal)].sort().join("|") !== [...new Set(person.clientCriteriaIds || [])].sort().join("|")) throw Error("Los par\xE1metros personales no coinciden con la ficha existente.");
+      } else {
+        if (!row.pep || !["SI", "NO"].includes(normalizeText(row.pep))) throw Error("Indic\xE1 SI o NO en PEP para el sujeto nuevo.");
+        if (!row.nombre?.trim() || !row.actividad?.trim()) throw Error("Complet\xE1 nombre y actividad para el sujeto nuevo.");
+        const values = subjectSchema.parse({ subjectName: row.nombre || "", taxId: document, subjectType: row.tipo_sujeto || "PERSONA_FISICA", activity: row.actividad || "", pepStatus: normalizeText(row.pep) === "SI", pepDetails: row.detalle_pep || "", clientCriteriaIds: personal || [], address: row.direccion || "", email: row.email || "", phone: row.telefono || "" });
+        person = { ...values, id: await uuid(ownerId + ":import-subject:" + key), updatedAt: now };
+        byDoc.set(key, person);
+        newSubjects.set(key, person);
+      }
+      const type = types.find((t) => t.active && (normalizeText(t.code) === normalizeText(row.tipo_operacion || "") || normalizeText(t.name) === normalizeText(row.tipo_operacion || "")));
+      if (!type) throw Error("El tipo de operaci\xF3n no existe o est\xE1 deshabilitado.");
+      const input = operationSchema.parse({ operationType: type.code, operationAt: parseImportDate(row.fecha_operacion || ""), amountARS: parseImportAmount(row.importe_ars || ""), locationDepartment: row.departamento || "", channelName: row.sala || "", selectedCriteriaIds: [criterion(row.producto || type.productCriterionId || "", "PRODUCTO"), criterion(row.canal || "", "CANAL"), criterion(row.zona || "", "GEOGRAFIA")], notes: row.notas || "", conditionConfirmed: true, pepStatus: person.pepStatus, pepDetails: person.pepDetails, activityAtOperation: person.activity });
+      const record = buildEvaluationRecord(input, person, config, type, { id, now, evaluator: actor.email, role: actor.role, fingerprint: rowFingerprint });
+      record.importReference = ref;
+      record.importRowFingerprint = rowFingerprint;
+      records.push(record);
+      Object.assign(view, { estado: "NUEVA", sujeto: person.subjectName, importe: record.amountARS, riesgo: record.riskLevel, puntaje: record.weightedScore, alcance: record.evaluationScope?.reason });
+    } catch (e) {
+      view.error = e instanceof z2.ZodError ? e.issues[0]?.message : e.message;
+    }
+    preview.push(view);
+  }
+  const fingerprint = await digest(JSON.stringify({ rows, config, types, people: people.map((p) => ({ id: p.id, updatedAt: p.updatedAt })).sort((a, b) => a.id.localeCompare(b.id)), existing: existing.filter((r) => r.importReference).map((r) => ({ id: r.id, hash: r.importRowFingerprint })).sort((a, b) => a.id.localeCompare(b.id)) }));
+  const result = { rows: preview, fingerprint, newCount: records.length, subjectCount: newSubjects.size, skipped: preview.filter((r) => r.estado === "YA_IMPORTADA").length, errors: preview.filter((r) => r.estado === "ERROR").length };
+  return { result, records, newSubjects: [...newSubjects.values()] };
+}
+
+// src/utils/operationTypes.ts
+var DEFAULT_OPERATION_TYPES = [
+  { code: "COBRO_PREMIO", name: "Cobro de premio", active: true, uifScope: "PISO" },
+  { code: "APUESTA_PRESENCIAL", name: "Apuesta presencial", active: true, uifScope: "NO_APLICA" },
+  { code: "APUESTA_ONLINE", name: "Juego en l\xEDnea", active: true, uifScope: "SIEMPRE" },
+  { code: "CAMBIO_FICHAS", name: "Conversi\xF3n de valores / cambio de fichas", active: true, uifScope: "PISO" },
+  { code: "ALTA_AGENCIA", name: "Alta de agencia / intermediario", active: true, uifScope: "NO_APLICA" }
+];
+var operationTypesFor = (org) => org?.operationTypes ?? DEFAULT_OPERATION_TYPES;
 
 // portable/access.ts
 import { and, eq } from "drizzle-orm";
@@ -74,7 +294,7 @@ var DEFAULT_ORGANIZATION = { shortName: "IAFAS", legalName: "Instituto de Ayuda 
 
 // app/api/data/route.ts
 import { and as and2, eq as eq2, desc } from "drizzle-orm";
-import { z } from "zod";
+import { z as z3 } from "zod";
 
 // src/data/initialRiskData.ts
 var LEGACY_FACTOR_WEIGHTS = [
@@ -550,81 +770,10 @@ var INITIAL_RISK_CRITERIA = simplified.criteria;
 var INITIAL_FACTOR_WEIGHTS = simplified.factorWeights;
 var INITIAL_REGULATORY_THRESHOLDS = simplified.thresholds;
 
-// src/utils/calculateRisk.ts
-function calculateRisk(criteria, factorWeights, selectedCriteriaIds, isPep, amountARS, thresholds = [], context = {}) {
-  ({ criteria, factorWeights, thresholds } = simplifyRiskConfiguration({ criteria, factorWeights, thresholds }));
-  const selectedObj = criteria.filter((c) => c.active && selectedCriteriaIds.includes(c.id));
-  const catScores = {};
-  factorWeights.forEach((fw) => {
-    const itemsInCat = selectedObj.filter((c) => c.category === fw.category);
-    if (itemsInCat.length > 0) {
-      const maxScore = Math.max(...itemsInCat.map((c) => c.score));
-      const avg = itemsInCat.reduce((acc, curr) => acc + curr.score, 0) / itemsInCat.length;
-      catScores[fw.category] = {
-        avgScore: avg,
-        maxScore,
-        count: itemsInCat.length,
-        weight: fw.weightPercentage
-      };
-    } else {
-      catScores[fw.category] = {
-        avgScore: 1,
-        maxScore: 1,
-        count: 0,
-        weight: fw.weightPercentage
-      };
-    }
-  });
-  let totalScore = 0;
-  factorWeights.forEach((fw) => {
-    const data = catScores[fw.category];
-    const categoryNormalized = (data.maxScore * 0.7 + data.avgScore * 0.3) / 5 * 100;
-    totalScore += categoryNormalized * (fw.weightPercentage / 100);
-  });
-  totalScore = Math.min(100, Math.max(10, Math.round(totalScore * 10) / 10));
-  let lvl = "BAJO";
-  if (totalScore >= 75 || isPep || selectedCriteriaIds.includes("cli-07")) {
-    lvl = totalScore >= 85 ? "CRITICO" : "ALTO";
-  } else if (totalScore >= 40) {
-    lvl = "MEDIO";
-  }
-  let dd = "SIMPLIFICADA";
-  if (lvl === "ALTO" || lvl === "CRITICO") {
-    dd = "REFORZADA";
-  } else if (lvl === "MEDIO") {
-    dd = "ESTANDAR";
-  }
-  const alertsGenerated = [];
-  if (isPep) {
-    alertsGenerated.push("Persona Expuesta Pol\xEDticamente (PEP): Requiere debida diligencia reforzada.");
-  }
-  const thresholdChecks = thresholds.map((t) => ({ ...t, total: amountARS, triggered: amountARS >= t.amountARS }));
-  const triggered = thresholdChecks.filter((t) => t.triggered);
-  triggered.forEach((t) => alertsGenerated.push(`${t.title}: $${t.total.toLocaleString("es-AR")} / $${t.amountARS.toLocaleString("es-AR")} (${t.periodicity}). ${t.actionRequired}`));
-  if (selectedCriteriaIds.includes("geo-02")) {
-    alertsGenerated.push("Operaci\xF3n en zona de frontera internacional.");
-  }
-  const djofRequired = isPep || lvl === "ALTO" || lvl === "CRITICO";
-  const docRequired = triggered.some((t) => t.code === "UMB-ID-01") || djofRequired;
-  return {
-    thresholdChecks,
-    weightedScore: totalScore,
-    rawScore: Math.round(totalScore),
-    riskLevel: lvl,
-    dueDiligence: dd,
-    alerts: alertsGenerated,
-    requiresDJOF: djofRequired,
-    requiresDocumentation: docRequired
-  };
-}
-
 // app/api/data/route.ts
 var dynamic = "force-dynamic";
-var subjectTypes = ["PERSONA_FISICA", "PERSONA_JURIDICA", "AGENCIA"];
+var subjectTypes2 = ["PERSONA_FISICA", "PERSONA_JURIDICA", "AGENCIA"];
 var statusValues = ["PENDIENTE", "EN_ANALISIS", "JUSTIFICADO", "ALERTA_EMITIDA", "REPORTE_ROS"];
-var subjectSchema = z.object({ id: z.string().optional(), updatedAt: z.string().optional(), subjectName: z.string().trim().min(2).max(200), taxId: z.string().trim().min(7).max(20), subjectType: z.enum(subjectTypes), address: z.string().trim().max(500).default(""), email: z.union([z.literal(""), z.string().trim().email().max(254)]).default(""), phone: z.string().trim().max(40).default(""), activity: z.string().trim().min(2).max(200), pepStatus: z.boolean(), pepDetails: z.string().max(1e3).optional(), clientCriteriaIds: z.array(z.string()).max(100).default([]) }).refine((s) => /^\d{7,11}$/.test(s.taxId.replace(/\D/g, "")), { message: "Revis\xE1 el DNI/CUIT: debe tener entre 7 y 11 d\xEDgitos." }).refine((s) => !s.phone || s.phone.replace(/\D/g, "").length >= 6, { message: "Revis\xE1 el tel\xE9fono." }).refine((s) => !s.pepStatus || !!s.pepDetails?.trim(), { message: "Indic\xE1 el cargo o condici\xF3n PEP en la ficha del sujeto." });
-var recordSchema = z.object({ subjectUpdatedAt: z.string().optional(), operationType: z.enum(["COBRO_PREMIO", "APUESTA_PRESENCIAL", "APUESTA_ONLINE", "CAMBIO_FICHAS", "ALTA_AGENCIA"]), amountARS: z.number().finite().positive().max(1e15), locationDepartment: z.string().trim().min(1).max(200), channelName: z.string().trim().min(1).max(200), selectedCriteriaIds: z.array(z.string()).min(1).max(200), notes: z.string().max(1e4) });
-var operationSchema = recordSchema.extend({ operationAt: z.string().datetime().refine((v) => Date.parse(v) <= Date.now() + 6e4, { message: "La operaci\xF3n no puede tener fecha futura." }), conditionConfirmed: z.literal(true, { error: "Confirm\xE1 la condici\xF3n del sujeto para esta operaci\xF3n." }), pepStatus: z.boolean(), pepDetails: z.string().max(1e3).optional(), activityAtOperation: z.string().trim().min(2).max(200) }).refine((r) => !r.pepStatus || !!r.pepDetails?.trim(), { message: "Indic\xE1 el cargo o condici\xF3n PEP evaluada." });
 function json(body, status = 200) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 }
@@ -641,7 +790,7 @@ function writeOwner(req) {
 }
 function handleError(e) {
   if (e instanceof SyntaxError) return json({ error: "El contenido no es JSON v\xE1lido." }, 400);
-  if (e instanceof z.ZodError) return json({ error: e.issues[0]?.message || "Datos inv\xE1lidos." }, 400);
+  if (e instanceof z3.ZodError) return json({ error: e.issues[0]?.message || "Datos inv\xE1lidos." }, 400);
   if (e instanceof Error && e.message === "UNAUTHORIZED") return json({ error: "Inici\xE1 sesi\xF3n para acceder a los datos." }, 401);
   if (e instanceof Error && e.message === "FORBIDDEN") return json({ error: "Operaci\xF3n no autorizada." }, 403);
   return json({ error: "No se pudo completar la operaci\xF3n en la base de datos. Intent\xE1 nuevamente." }, 500);
@@ -669,7 +818,7 @@ async function GET(req) {
     const [org] = await db.select().from(organizationSettings).where(eq2(organizationSettings.ownerId, ownerId));
     const records = rows.map((r) => r.record);
     const dashboard = can(user, "dashboard") ? { subjects: people.length, total: records.length, pending: records.filter((r) => r.status === "PENDIENTE").length, inAnalysis: records.filter((r) => r.status === "EN_ANALISIS").length, closed: records.filter((r) => r.status === "JUSTIFICADO").length, ros: records.filter((r) => r.status === "REPORTE_ROS").length, risk: Object.fromEntries(["BAJO", "MEDIO", "ALTO", "CRITICO"].map((k) => [k, records.filter((r) => r.riskLevel === k).length])) } : null;
-    return json({ ...config, user, dashboard, organization: org?.organization || DEFAULT_ORGANIZATION, subjects: can(user, "sujetos") || can(user, "expedientes", true) ? people : [], records: can(user, "expedientes") ? records.map((r) => can(user, "analisis") ? r : { ...r, analysis: void 0, analysisHistory: void 0 }) : [] });
+    return json({ ...config, user, dashboard, organization: { ...org?.organization || DEFAULT_ORGANIZATION, operationTypes: operationTypesFor(org?.organization) }, operationTypesVersion: await operationTypesVersion(operationTypesFor(org?.organization)), subjects: can(user, "sujetos") || can(user, "expedientes", true) ? people : [], records: can(user, "expedientes") ? records.map((r) => can(user, "analisis") ? r : { ...r, analysis: void 0, analysisHistory: void 0 }) : [] });
   } catch (e) {
     return handleError(e);
   }
@@ -678,8 +827,8 @@ async function POST(req) {
   try {
     writeOwner(req);
     const user = await access(req), ownerId = user.ownerId, db = getDb();
-    const { action, payload } = z.object({ action: z.string(), payload: z.record(z.string(), z.unknown()) }).parse(await req.json());
-    const required = { saveOrganization: "ajustes", saveSubject: "sujetos", saveEvaluation: "expedientes", reviewCase: "analisis", updateStatus: "analisis", saveSettings: "riesgo", deleteCriterion: "riesgo", importLocal: "expedientes" };
+    const { action, payload } = z3.object({ action: z3.string(), payload: z3.record(z3.string(), z3.unknown()) }).parse(await req.json());
+    const required = { saveOrganization: "ajustes", saveOperationTypes: "ajustes", previewOperationsImport: "expedientes", importOperations: "expedientes", saveSubject: "sujetos", saveEvaluation: "expedientes", reviewCase: "analisis", updateStatus: "analisis", saveSettings: "riesgo", deleteCriterion: "riesgo", importLocal: "expedientes" };
     if (!required[action]) return json({ error: "Operaci\xF3n desconocida." }, 400);
     requireModule(user, required[action], true);
     if (action === "importLocal") {
@@ -687,16 +836,47 @@ async function POST(req) {
       requireModule(user, "riesgo", true);
     }
     if (action === "reviewCase" || action === "updateStatus") requireModule(user, "expedientes");
+    if (action === "saveOperationTypes") {
+      const input = z3.object({ version: z3.string(), types: z3.array(z3.object({ code: z3.string().regex(/^[A-Z][A-Z0-9_]{1,79}$/), name: z3.string().trim().min(2).max(120), active: z3.boolean(), uifScope: z3.enum(["PISO", "SIEMPRE", "NO_APLICA"]), productCriterionId: z3.string().optional() })).min(1).max(100) }).parse(payload);
+      if (new Set(input.types.map((t) => t.code)).size !== input.types.length) return json({ error: "Hay c\xF3digos de operaci\xF3n repetidos." }, 400);
+      if (!input.types.some((t) => t.active)) return json({ error: "Debe quedar al menos un tipo activo." }, 400);
+      const [org] = await db.select().from(organizationSettings).where(eq2(organizationSettings.ownerId, ownerId));
+      const current = operationTypesFor(org?.organization);
+      if (await operationTypesVersion(current) !== input.version) return json({ error: "Los tipos cambiaron. Actualiz\xE1 la p\xE1gina antes de guardar." }, 409);
+      const config = await configFor(ownerId);
+      if (input.types.some((t) => t.productCriterionId && !config.criteria.some((c) => c.id === t.productCriterionId && c.active && !c.deletedAt && c.category === "PRODUCTO"))) return json({ error: "El producto predeterminado no est\xE1 activo." }, 400);
+      const types = [...input.types, ...current.filter((t) => !input.types.some((n) => n.code === t.code)).map((t) => ({ ...t, active: false }))];
+      if (types.length > 100) return json({ error: "El cat\xE1logo admite hasta 100 tipos, incluidos los retirados." }, 400);
+      const organization = { ...org?.organization || DEFAULT_ORGANIZATION, operationTypes: types }, now = (/* @__PURE__ */ new Date()).toISOString();
+      await db.insert(organizationSettings).values({ ownerId, organization, updatedAt: now }).onConflictDoUpdate({ target: organizationSettings.ownerId, set: { organization, updatedAt: now } });
+      return json({ organization, operationTypesVersion: await operationTypesVersion(types) });
+    }
+    if (action === "previewOperationsImport" || action === "importOperations") {
+      requireModule(user, "sujetos", true);
+      requireModule(user, "ajustes", true);
+      const [config, people, rows, orgs] = await Promise.all([configFor(ownerId), db.select().from(subjects).where(eq2(subjects.ownerId, ownerId)), db.select().from(evaluations).where(eq2(evaluations.ownerId, ownerId)), db.select().from(organizationSettings).where(eq2(organizationSettings.ownerId, ownerId))]);
+      const plan = await prepareOperationsImport(payload.rows, ownerId, people, rows.map((r) => r.record), config, operationTypesFor(orgs[0]?.organization), user);
+      if (action === "previewOperationsImport") return json(plan.result);
+      if (payload.confirmed !== true) return json({ error: "Confirm\xE1 la revisi\xF3n de los sujetos y operaciones antes de importar." }, 400);
+      if (plan.result.errors) return json({ error: "Correg\xED todas las filas con errores antes de importar.", preview: plan.result }, 400);
+      if (plan.result.newCount && payload.fingerprint !== plan.result.fingerprint) return json({ error: "Los datos, par\xE1metros o sujetos cambiaron. Gener\xE1 una nueva vista previa." }, 409);
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const inserts = [...plan.newSubjects.map((person) => db.insert(subjects).values({ ...person, ownerId, documentKey: person.taxId.replace(/\D/g, ""), pepDetails: person.pepDetails || "", createdAt: person.updatedAt || now, updatedAt: person.updatedAt || now })), ...plan.records.map((record) => db.insert(evaluations).values({ id: record.id, ownerId, subjectId: record.subjectId, createdAt: now, record }))];
+      if (inserts.length) await db.batch(inserts);
+      return json({ imported: plan.records.length, subjectsCreated: plan.newSubjects.length, skipped: plan.result.skipped });
+    }
     if (action === "saveOrganization") {
-      const organization = z.object({ shortName: z.string().trim().min(2).max(40), legalName: z.string().trim().min(2).max(200), area: z.string().trim().min(2).max(120), taxId: z.string().trim().max(30), address: z.string().trim().max(500), email: z.union([z.literal(""), z.string().trim().email().max(254)]), phone: z.string().trim().max(50), website: z.union([z.literal(""), z.string().url().max(300).refine((v) => /^https?:\/\//.test(v), { message: "Us\xE1 una direcci\xF3n web http o https." })]), logo: z.string().max(28e4).refine((v) => !v || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(v), { message: "Us\xE1 un logo PNG, JPG o WebP de hasta 200 KB." }) }).parse(payload);
+      const organization = z3.object({ shortName: z3.string().trim().min(2).max(40), legalName: z3.string().trim().min(2).max(200), area: z3.string().trim().min(2).max(120), taxId: z3.string().trim().max(30), address: z3.string().trim().max(500), email: z3.union([z3.literal(""), z3.string().trim().email().max(254)]), phone: z3.string().trim().max(50), website: z3.union([z3.literal(""), z3.string().url().max(300).refine((v) => /^https?:\/\//.test(v), { message: "Us\xE1 una direcci\xF3n web http o https." })]), logo: z3.string().max(28e4).refine((v) => !v || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(v), { message: "Us\xE1 un logo PNG, JPG o WebP de hasta 200 KB." }) }).parse(payload);
       if (organization.logo) {
         const [prefix, encoded] = organization.logo.split(",");
         const bytes = atob(encoded);
         const valid = prefix.includes("image/png") ? bytes.startsWith("\x89PNG\r\n\n") : prefix.includes("image/jpeg") ? bytes.startsWith("\xFF\xD8\xFF") : bytes.startsWith("RIFF") && bytes.slice(8, 12) === "WEBP";
         if (!valid || bytes.length > 2e5) return json({ error: "El archivo del logo no es v\xE1lido o supera 200 KB." }, 400);
       }
-      await db.insert(organizationSettings).values({ ownerId, organization, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }).onConflictDoUpdate({ target: organizationSettings.ownerId, set: { organization, updatedAt: (/* @__PURE__ */ new Date()).toISOString() } });
-      return json({ organization });
+      const [previousOrg] = await db.select().from(organizationSettings).where(eq2(organizationSettings.ownerId, ownerId));
+      const savedOrganization = { ...organization, operationTypes: operationTypesFor(previousOrg?.organization) };
+      await db.insert(organizationSettings).values({ ownerId, organization: savedOrganization, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }).onConflictDoUpdate({ target: organizationSettings.ownerId, set: { organization: savedOrganization, updatedAt: (/* @__PURE__ */ new Date()).toISOString() } });
+      return json({ organization: savedOrganization });
     }
     if (action === "saveSubject") {
       const input = subjectSchema.parse(payload), documentKey = input.taxId.replace(/\D/g, ""), now = (/* @__PURE__ */ new Date()).toISOString();
@@ -724,8 +904,8 @@ async function POST(req) {
       if (!requestedId) return json({ error: "Primero registr\xE1 y seleccion\xE1 al sujeto. Los datos personales se cargan en su ficha." }, 400);
       const [person] = await db.select().from(subjects).where(and2(eq2(subjects.ownerId, ownerId), eq2(subjects.id, requestedId)));
       if (!person) return json({ error: "No se encontr\xF3 el sujeto. Busc\xE1 su ficha antes de cargar la operaci\xF3n." }, 404);
-      const requestId = payload.requestId ? z.string().uuid().parse(payload.requestId) : crypto.randomUUID();
-      const submitted = recordSchema.extend({ operationAt: z.string().datetime() }).parse(payload.record);
+      const requestId = payload.requestId ? z3.string().uuid().parse(payload.requestId) : crypto.randomUUID();
+      const submitted = recordSchema.extend({ operationAt: z3.string().datetime() }).parse(payload.record);
       const fingerprint = JSON.stringify({ ...submitted, selectedCriteriaIds: [...new Set(submitted.selectedCriteriaIds)].sort() });
       const [previous] = await db.select().from(evaluations).where(and2(eq2(evaluations.ownerId, ownerId), eq2(evaluations.id, requestId)));
       if (previous) {
@@ -736,13 +916,16 @@ async function POST(req) {
       const input = operationSchema.parse({ ...payload.record, pepStatus: person.pepStatus, pepDetails: person.pepDetails, activityAtOperation: person.activity });
       const subjectId = person.id;
       const config = await configFor(ownerId);
-      input.selectedCriteriaIds = [.../* @__PURE__ */ new Set([...input.selectedCriteriaIds.filter((id2) => !config.criteria.some((c) => c.id === id2 && c.category === "CLIENTE")), ...person.clientCriteriaIds])];
-      if (input.selectedCriteriaIds.some((id2) => !config.criteria.some((c) => c.id === id2 && c.active))) return json({ error: "Uno de los criterios ya no est\xE1 activo. Actualiz\xE1 la p\xE1gina y revis\xE1 la selecci\xF3n." }, 409);
-      if (EBR_CATEGORIES.some((category) => !config.criteria.some((c) => c.category === category && input.selectedCriteriaIds.includes(c.id)))) return json({ error: "Complet\xE1 los criterios personales en la ficha del sujeto y los criterios de producto/servicio, canal y geograf\xEDa en la operaci\xF3n." }, 400);
-      const history = await db.select().from(evaluations).where(and2(eq2(evaluations.ownerId, ownerId), eq2(evaluations.subjectId, subjectId)));
-      const result = calculateRisk(config.criteria, config.factorWeights, input.selectedCriteriaIds, input.pepStatus, input.amountARS, config.thresholds, { operationAt: input.operationAt, subjectType: person.subjectType, records: history.map((r) => r.record) });
+      const [org] = await db.select().from(organizationSettings).where(eq2(organizationSettings.ownerId, ownerId));
+      const type = operationTypesFor(org?.organization).find((t) => t.code === input.operationType && t.active);
+      if (!type) return json({ error: "El tipo de operaci\xF3n no est\xE1 activo. Actualiz\xE1 la p\xE1gina." }, 409);
+      let record;
+      try {
+        record = buildEvaluationRecord(input, person, config, type, { id: requestId, now, evaluator: user.email, role: user.role, fingerprint });
+      } catch (e) {
+        return json({ error: e.message }, 409);
+      }
       const id = requestId;
-      const record = { ...input, id, requestFingerprint: fingerprint, criteriaSnapshot: config.criteria.filter((c) => input.selectedCriteriaIds.includes(c.id)), weightsSnapshot: config.factorWeights, thresholdsSnapshot: config.thresholds, dossierNumber: `EXP-PLA-${(/* @__PURE__ */ new Date()).getFullYear()}-${id.slice(0, 8).toUpperCase()}`, timestamp: now, conditionReviewedAt: now, evaluator: req.headers.get("oai-authenticated-user-email") || "Usuario autenticado", evaluatorRole: user.role, subjectId, subjectName: person.subjectName, taxId: person.taxId, subjectType: person.subjectType, address: person.address || "", email: person.email || "", phone: person.phone || "", activityOcupation: input.activityAtOperation, pepStatus: input.pepStatus, pepDetails: input.pepDetails, weightedScore: result.weightedScore, rawScore: result.rawScore, riskLevel: result.riskLevel, dueDiligenceLevel: result.dueDiligence, status: "PENDIENTE", requiresDJOF: result.requiresDJOF, requiresDocumentation: result.requiresDocumentation, alerts: result.alerts, analysisVersion: 0 };
       const operation = db.insert(evaluations).values({ id, ownerId, subjectId, createdAt: now, record });
       try {
         await operation;
@@ -753,7 +936,7 @@ async function POST(req) {
       return json({ record, subject: person }, 201);
     }
     if (action === "reviewCase") {
-      const input = z.object({ id: z.string(), version: z.number().int().nonnegative(), action: z.enum(["SEGUIMIENTO", "CERRAR_JUSTIFICADA", "DETERMINAR_SOSPECHOSA", "REGISTRAR_ROS"]), classification: z.enum(["EN_REVISION", "SIN_INUSUALIDAD", "INUSUAL", "SOSPECHOSA"]), alertOrigin: z.string().trim().min(2).max(1e3), unusualType: z.string().max(4e3), profileSummary: z.string().max(4e3).default(""), documentationRequested: z.string().max(4e3), documentationReviewed: z.string().max(4e3), fundsAssessment: z.string().max(4e3).default(""), beneficialOwner: z.string().max(2e3), reasoning: z.string().trim().min(10).max(6e3), rosReference: z.string().max(500), rosSubmittedAt: z.string().max(50) }).parse(payload);
+      const input = z3.object({ id: z3.string(), version: z3.number().int().nonnegative(), action: z3.enum(["SEGUIMIENTO", "CERRAR_JUSTIFICADA", "DETERMINAR_SOSPECHOSA", "REGISTRAR_ROS"]), classification: z3.enum(["EN_REVISION", "SIN_INUSUALIDAD", "INUSUAL", "SOSPECHOSA"]), alertOrigin: z3.string().trim().min(2).max(1e3), unusualType: z3.string().max(4e3), profileSummary: z3.string().max(4e3).default(""), documentationRequested: z3.string().max(4e3), documentationReviewed: z3.string().max(4e3), fundsAssessment: z3.string().max(4e3).default(""), beneficialOwner: z3.string().max(2e3), reasoning: z3.string().trim().min(10).max(6e3), rosReference: z3.string().max(500), rosSubmittedAt: z3.string().max(50) }).parse(payload);
       const [row] = await db.select().from(evaluations).where(and2(eq2(evaluations.ownerId, ownerId), eq2(evaluations.id, input.id)));
       if (!row) return json({ error: "No se encontr\xF3 el expediente." }, 404);
       if ((row.record.analysisVersion || 0) !== input.version) return json({ error: "El expediente cambi\xF3. Actualiz\xE1 la p\xE1gina antes de guardar el an\xE1lisis." }, 409);
@@ -772,7 +955,7 @@ async function POST(req) {
       return json({ record });
     }
     if (action === "updateStatus") {
-      const input = z.object({ id: z.string(), status: z.enum(statusValues) }).parse(payload);
+      const input = z3.object({ id: z3.string(), status: z3.enum(statusValues) }).parse(payload);
       const [row] = await db.select().from(evaluations).where(and2(eq2(evaluations.ownerId, ownerId), eq2(evaluations.id, input.id)));
       if (!row) return json({ error: "No se encontr\xF3 el expediente." }, 404);
       if (row.record.status === "JUSTIFICADO" || row.record.status === "REPORTE_ROS") return json({ error: "Los cambios de un expediente concluido requieren an\xE1lisis documentado." }, 409);
@@ -783,7 +966,7 @@ async function POST(req) {
     }
     if (action === "deleteCriterion") {
       if (user.role !== "SUPERADMIN") throw Error("FORBIDDEN");
-      const { id } = z.object({ id: z.string().min(1).max(200) }).parse(payload);
+      const { id } = z3.object({ id: z3.string().min(1).max(200) }).parse(payload);
       const config = await configFor(ownerId), criterion = config.criteria.find((c) => c.id === id);
       if (!criterion) return json({ error: "No se encontr\xF3 el par\xE1metro." }, 404);
       if (criterion.deletedAt) return json(config);
@@ -793,7 +976,7 @@ async function POST(req) {
       return json(next);
     }
     if (action === "saveSettings") {
-      const config = z.object({ criteria: z.array(z.object({ id: z.string(), deletedAt: z.string().optional(), deletedBy: z.string().optional(), code: z.string(), name: z.string(), description: z.string(), category: z.enum(["CLIENTE", "PRODUCTO", "CANAL", "GEOGRAFIA"]), subgroup: z.string(), score: z.number().min(1).max(5), riskLevel: z.enum(["BAJO", "MEDIO", "ALTO", "CRITICO"]), mitigationFactor: z.number().min(0).max(1), active: z.boolean(), regulatoryBase: z.string(), lastUpdated: z.string() })).max(1e3), factorWeights: z.array(z.object({ category: z.enum(["CLIENTE", "PRODUCTO", "CANAL", "GEOGRAFIA"]), name: z.string(), weightPercentage: z.number().min(0).max(100), description: z.string(), iconName: z.string() })).length(4), thresholds: z.array(z.object({ id: z.string(), code: z.string(), title: z.string(), description: z.string(), amountARS: z.number().finite().positive(), periodicity: z.enum(["POR_OPERACION", "MENSUAL_ACUMULADO", "ANUAL"]), actionRequired: z.string(), regulationSource: z.string(), lastUpdated: z.string() })).max(100) }).parse(payload);
+      const config = z3.object({ criteria: z3.array(z3.object({ id: z3.string(), deletedAt: z3.string().optional(), deletedBy: z3.string().optional(), code: z3.string(), name: z3.string(), description: z3.string(), category: z3.enum(["CLIENTE", "PRODUCTO", "CANAL", "GEOGRAFIA"]), subgroup: z3.string(), score: z3.number().min(1).max(5), riskLevel: z3.enum(["BAJO", "MEDIO", "ALTO", "CRITICO"]), mitigationFactor: z3.number().min(0).max(1), active: z3.boolean(), regulatoryBase: z3.string(), lastUpdated: z3.string() })).max(1e3), factorWeights: z3.array(z3.object({ category: z3.enum(["CLIENTE", "PRODUCTO", "CANAL", "GEOGRAFIA"]), name: z3.string(), weightPercentage: z3.number().min(0).max(100), description: z3.string(), iconName: z3.string() })).length(4), thresholds: z3.array(z3.object({ id: z3.string(), code: z3.string(), title: z3.string(), description: z3.string(), amountARS: z3.number().finite().positive(), periodicity: z3.enum(["POR_OPERACION", "MENSUAL_ACUMULADO", "ANUAL"]), actionRequired: z3.string(), regulationSource: z3.string(), lastUpdated: z3.string() })).max(100) }).parse(payload);
       if (config.thresholds.length !== 1 || config.thresholds[0].code !== UIF_FLOOR_CODE || config.thresholds[0].periodicity !== "POR_OPERACION") return json({ error: "Configur\xE1 \xFAnicamente el piso UIF por operaci\xF3n." }, 400);
       if (Math.abs(config.factorWeights.reduce((sum, w) => sum + w.weightPercentage, 0) - 100) > 0.01) return json({ error: "Las ponderaciones deben sumar 100%." }, 400);
       const unique = (v) => new Set(v).size === v.length;
@@ -811,7 +994,7 @@ async function POST(req) {
     }
     if (action === "importLocal") {
       if (user.role !== "SUPERADMIN") throw Error("FORBIDDEN");
-      const records = z.array(recordSchema.extend({ id: z.string().max(100), timestamp: z.string(), dossierNumber: z.string(), evaluator: z.string(), evaluatorRole: z.string(), subjectName: z.string(), taxId: z.string(), subjectType: z.enum(subjectTypes), activityOcupation: z.string(), pepStatus: z.boolean(), weightedScore: z.number().finite(), rawScore: z.number().finite(), riskLevel: z.enum(["BAJO", "MEDIO", "ALTO", "CRITICO"]), dueDiligenceLevel: z.enum(["SIMPLIFICADA", "ESTANDAR", "REFORZADA"]), status: z.enum(statusValues), alerts: z.array(z.string()), requiresDJOF: z.boolean(), requiresDocumentation: z.boolean() }).passthrough()).max(1e3).parse(payload.records);
+      const records = z3.array(recordSchema.extend({ id: z3.string().max(100), timestamp: z3.string(), dossierNumber: z3.string(), evaluator: z3.string(), evaluatorRole: z3.string(), subjectName: z3.string(), taxId: z3.string(), subjectType: z3.enum(subjectTypes2), activityOcupation: z3.string(), pepStatus: z3.boolean(), weightedScore: z3.number().finite(), rawScore: z3.number().finite(), riskLevel: z3.enum(["BAJO", "MEDIO", "ALTO", "CRITICO"]), dueDiligenceLevel: z3.enum(["SIMPLIFICADA", "ESTANDAR", "REFORZADA"]), status: z3.enum(statusValues), alerts: z3.array(z3.string()), requiresDJOF: z3.boolean(), requiresDocumentation: z3.boolean() }).passthrough()).max(1e3).parse(payload.records);
       let imported = 0;
       for (const record of records) {
         if (!record.taxId.replace(/\D/g, "")) continue;
@@ -840,10 +1023,10 @@ __export(route_exports2, {
   dynamic: () => dynamic2
 });
 import { eq as eq3 } from "drizzle-orm";
-import { z as z2 } from "zod";
+import { z as z4 } from "zod";
 var dynamic2 = "force-dynamic";
 function error(e) {
-  return Response.json({ error: e instanceof z2.ZodError ? e.issues[0].message : "Acceso no autorizado." }, { status: e instanceof z2.ZodError ? 400 : e instanceof Error && e.message === "UNAUTHORIZED" ? 401 : 403 });
+  return Response.json({ error: e instanceof z4.ZodError ? e.issues[0].message : "Acceso no autorizado." }, { status: e instanceof z4.ZodError ? 400 : e instanceof Error && e.message === "UNAUTHORIZED" ? 401 : 403 });
 }
 async function GET2(req) {
   try {
@@ -859,7 +1042,7 @@ async function POST2(req) {
     const u = await access(req);
     if (u.role !== "SUPERADMIN") throw Error("FORBIDDEN");
     if (req.headers.get("Origin") && req.headers.get("Origin") !== new URL(req.url).origin) throw Error("FORBIDDEN");
-    const input = z2.object({ id: z2.string().optional(), email: z2.string().trim().email().transform((v) => v.toLowerCase()), name: z2.string().trim().min(2).max(100), role: z2.enum(["ADMIN", "ANALISTA", "OPERADOR"]), active: z2.boolean(), grants: z2.partialRecord(z2.enum(MODULES), z2.enum(["read", "write"])) }).parse(await req.json());
+    const input = z4.object({ id: z4.string().optional(), email: z4.string().trim().email().transform((v) => v.toLowerCase()), name: z4.string().trim().min(2).max(100), role: z4.enum(["ADMIN", "ANALISTA", "OPERADOR"]), active: z4.boolean(), grants: z4.partialRecord(z4.enum(MODULES), z4.enum(["read", "write"])) }).parse(await req.json());
     if (input.grants.analisis && !input.grants.expedientes) return Response.json({ error: "El an\xE1lisis requiere acceso a Expedientes." }, { status: 400 });
     const db = getDb();
     const [existing] = await db.select().from(appUsers).where(eq3(appUsers.email, input.email));

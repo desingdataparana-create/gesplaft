@@ -43,3 +43,10 @@ Para `sigxia.com.ar/gesplaft/`, preparar un pase separado con base/proceso/puert
 La batería de integración está en `scripts/test-vps.mjs`. En un entorno aislado con memoria suficiente, `npm ci` instala la dependencia de desarrollo PGlite y `npm test` comprueba login, sesiones, permisos, acumulados, reintentos, historial, eliminación de parámetros y subruta. La instalación de producción con `--omit=dev --omit=optional` no descarga ese motor de pruebas.
 
 Los parámetros iniciales son de demostración y deben validarse metodológicamente. Esta distribución no migra automáticamente registros de la vista privada Sites. El PostgreSQL del VPS, los respaldos y el proxy requieren su propia validación.
+
+
+## Revisión de carga simplificada
+
+Piso UIF único, alta de sujeto integrada en Nuevo expediente, cuatro factores EBR y análisis sin los campos de perfil y origen/destino retirados. Ver `deploy/REVISION_CARGA_SIMPLIFICADA.md`.
+
+`deploy/instalar-carga-test.sh SHA` verifica la revisión instalada, los hashes, el proceso y la base de pruebas, respalda configuración, PostgreSQL y artefactos, y actualiza únicamente `gesplaft-test`. No requiere compilar, migrar SQL ni recargar Nginx.

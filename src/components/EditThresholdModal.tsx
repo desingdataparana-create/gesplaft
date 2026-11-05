@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { RegulatoryThreshold } from '../types';
 import { X, Save, Scale, DollarSign, Info } from 'lucide-react';
 
@@ -15,22 +15,14 @@ export const EditThresholdModal: React.FC<EditThresholdModalProps> = ({
   onClose,
   onSave,
 }) => {
-  const [amountARS, setAmountARS] = useState<number>(0);
-  const [actionRequired, setActionRequired] = useState('');
-  const [description, setDescription] = useState('');
-  const [regulationSource, setRegulatorySource] = useState('');
+  const [amountARS, setAmountARS] = useState<number>(threshold?.amountARS||0);
+  const [actionRequired, setActionRequired] = useState(threshold?.actionRequired||'');
+  const [description, setDescription] = useState(threshold?.description||'');
+  const [regulationSource, setRegulatorySource] = useState(threshold?.regulationSource||'');
 
   const [saveError,setSaveError]=useState('');
   const [saveBusy,setSaveBusy]=useState(false);
-  useEffect(() => {
-    setSaveError('');
-    if (threshold) {
-      setAmountARS(threshold.amountARS);
-      setActionRequired(threshold.actionRequired);
-      setDescription(threshold.description);
-      setRegulatorySource(threshold.regulationSource);
-    }
-  }, [threshold, isOpen]);
+
 
   if (!isOpen || !threshold) return null;
 

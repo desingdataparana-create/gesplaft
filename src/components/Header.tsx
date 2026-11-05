@@ -14,7 +14,7 @@ interface HeaderProps {
 }
 export function Header(p:HeaderProps){
  const items=[{id:'dashboard',label:'Dashboard',icon:ShieldCheck},{id:'monitoreo',label:'Expedientes',icon:FileText},{id:'sujetos',label:'Sujetos',icon:Users},{id:'normativa',label:'Parámetros de riesgo',icon:SlidersHorizontal},{id:'ajustes',label:'Ajustes',icon:Settings},{id:'usuarios',label:'Usuarios',icon:Users}].filter(i=>i.id==='usuarios'?p.user?.role==='SUPERADMIN':can(p.user,({monitoreo:'expedientes',normativa:'riesgo',dashboard:'dashboard',sujetos:'sujetos',ajustes:'ajustes'} as const)[i.id as 'monitoreo']));
- const status=p.status==='loading'?'Conectando':p.status==='saving'?'Guardando':p.status==='error'?'Sin conexión':'Conectado';
+ const status=p.status==='loading'?'Conectando':p.status==='saving'?'Guardando':p.status==='error'?'Revisar aviso':'Conectado';
  return <>
  <a className="skip-link" href="#contenido">Ir al contenido</a>
  <header className="workspace-header">

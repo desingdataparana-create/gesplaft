@@ -1,4 +1,5 @@
 'use client';
+import {useTheme} from './utils/useTheme';
 import { simplifyRiskConfiguration } from './utils/riskConfiguration';
 import {operationTypesFor} from './utils/operationTypes';
 import {sitePath,passwordAuth} from './utils/paths';
@@ -36,10 +37,8 @@ export default function App() {
   const allow=(module:Parameters<typeof can>[1],write=false)=>can(user,module,write);
   const [organization,setOrganization]=useState<OrganizationSettings>(DEFAULT_ORGANIZATION);
   useEffect(()=>{document.title=`${organization.shortName} · ${organization.area}`},[organization.shortName,organization.area]);
-  const [theme,setTheme]=useState<ThemeMode>('system');
-  const [themeLoaded,setThemeLoaded]=useState(false);
-  useEffect(()=>{try{const value=localStorage.getItem('iafas_theme');if(value==='light'||value==='dark'||value==='system')setTheme(value)}catch{}setThemeLoaded(true)},[]);
-  useEffect(()=>{if(!themeLoaded)return;const media=window.matchMedia('(prefers-color-scheme: dark)');const apply=()=>{document.documentElement.dataset.theme=theme==='system'?(media.matches?'dark':'light'):theme};apply();media.addEventListener('change',apply);try{localStorage.setItem('iafas_theme',theme)}catch{}return()=>media.removeEventListener('change',apply)},[theme,themeLoaded]);
+  const [theme,setTheme]=useTheme();
+  useEffect(()=>{const media=window.matchMedia('(prefers-color-scheme: dark)');const apply=()=>{document.documentElement.dataset.theme=theme==='system'?(media.matches?'dark':'light'):theme};apply();media.addEventListener('change',apply);return()=>media.removeEventListener('change',apply)},[theme]);
   const [criteria, setCriteria] = useState<RiskCriterion[]>(INITIAL_RISK_CRITERIA);
   const [factorWeights, setFactorWeights] = useState<FactorWeight[]>(INITIAL_FACTOR_WEIGHTS);
   const [thresholds, setThresholds] = useState<RegulatoryThreshold[]>(INITIAL_REGULATORY_THRESHOLDS);
@@ -50,18 +49,23 @@ export default function App() {
   const [serverError, setServerError] = useState('');
   const [saving, setSaving] = useState(false);
   const [legacyRecords, setLegacyRecords] = useState<EvaluationRecord[]>([]);
-  const loadState = async () => {
-    const data = await request<{criteria:RiskCriterion[];factorWeights:FactorWeight[];thresholds:RegulatoryThreshold[];records:EvaluationRecord[];subjects:Subject[];organization:OrganizationSettings;user:AccessUser;dashboard:DashboardData|null;operationTypesVersion:string}>();
+  type ServerState={criteria:RiskCriterion[];factorWeights:FactorWeight[];thresholds:RegulatoryThreshold[];records:EvaluationRecord[];subjects:Subject[];organization:OrganizationSettings;user:AccessUser;dashboard:DashboardData|null;operationTypesVersion:string};
+  const applyState=(data:ServerState)=>{
     setOperationTypesVersion(data.operationTypesVersion);setUser(data.user);setDashboard(data.dashboard);setOrganization(data.organization||DEFAULT_ORGANIZATION);setCriteria(data.criteria); setFactorWeights(data.factorWeights); setThresholds(data.thresholds); setRecords(data.records); setSubjects(data.subjects);setLoaded(true);
     setLegacyRecords(prev=>prev.filter(r=>!data.records.some(saved=>saved.id===r.id)));
   };
+  const loadState=async()=>applyState(await request<ServerState>());
   useEffect(() => {
-    loadState().catch(e=>setServerError(e.message)).finally(()=>setLoading(false));
-    try { const previous = JSON.parse(localStorage.getItem('iafas_eval_records') || '[]'); if(Array.isArray(previous))setLegacyRecords(previous.filter((r:EvaluationRecord)=>!(/^0{6,10}[0-9]{1,2}$/.test(String(r.taxId||'').replace(/\D/g,''))&&/demostraci[oó]n|ejemplo/i.test(String(r.subjectName||''))))); } catch { /* Legacy bytes are left intact. */ }
+    let active=true;
+    request<ServerState>().then(data=>{if(!active)return;applyState(data);
+      try{const previous=JSON.parse(localStorage.getItem('iafas_eval_records')||'[]');if(Array.isArray(previous))setLegacyRecords(previous.filter((r:EvaluationRecord)=>!data.records.some(saved=>saved.id===r.id)&&!(/^0{6,10}[0-9]{1,2}$/.test(String(r.taxId||'').replace(/\D/g,''))&&/demostraci[oó]n|ejemplo/i.test(String(r.subjectName||'')))))}catch{}
+    }).catch(e=>{if(active)setServerError(e.message)}).finally(()=>{if(active)setLoading(false)});
+    return()=>{active=false};
   }, []);
+
   const saveConfig = async (patch:Partial<{criteria:RiskCriterion[];factorWeights:FactorWeight[];thresholds:RegulatoryThreshold[]}>) => {
     setSaving(true); setServerError('');
-    try { const config = await request<{criteria:RiskCriterion[];factorWeights:FactorWeight[];thresholds:RegulatoryThreshold[]}>('saveSettings',{criteria,factorWeights,thresholds,...patch});setCriteria(config.criteria);setFactorWeights(config.factorWeights);setThresholds(config.thresholds); }
+    try { const config = await request<{criteria:RiskCriterion[];factorWeights:FactorWeight[];thresholds:RegulatoryThreshold[]}>('saveSettings',{criteria,factorWeights,thresholds,...patch,expectedConfig:{criteria,factorWeights,thresholds}});setCriteria(config.criteria);setFactorWeights(config.factorWeights);setThresholds(config.thresholds); }
     catch(e){setServerError((e as Error).message);throw e;} finally{setSaving(false);}
   };
   const importRecords = async (items:EvaluationRecord[]) => {
@@ -89,7 +93,17 @@ export default function App() {
 
   // Responsive Popup Modals: Consulta Rápida and Carga de Operación
   const [isNewEvaluationModalOpen, setIsNewEvaluationModalOpen] = useState(false);
+  const [historicalEvaluation,setHistoricalEvaluation]=useState<EvaluationRecord|null>(null);
   const [initialEvaluationSubject, setInitialEvaluationSubject] = useState<Partial<Subject> | null>(null);
+
+  const handleCloseNewEvaluationModal = () => {
+    setIsNewEvaluationModalOpen(false);
+    setInitialEvaluationSubject(null);setHistoricalEvaluation(null);
+    setCurrentTab('monitoreo');
+    if (/evaluacion|simulador/.test(window.location.hash)) {
+      window.history.replaceState(null, '', '#/expedientes/');
+    }
+  };
 
   useEffect(() => {
     const closeModal = selectedAnalysis ? ()=>setSelectedAnalysis(null) : isAddModalOpen ? () => setIsAddModalOpen(false)
@@ -123,20 +137,14 @@ export default function App() {
   };
 
   const handleOpenNewEvaluationModal = (subjectData?: typeof initialEvaluationSubject) => {
+    setHistoricalEvaluation(null);
     setInitialEvaluationSubject(subjectData || null);
     setCurrentTab('monitoreo');
     window.location.hash = '/evaluacion/';
     setIsNewEvaluationModalOpen(true);
   };
 
-  const handleCloseNewEvaluationModal = () => {
-    setIsNewEvaluationModalOpen(false);
-    setInitialEvaluationSubject(null);
-    setCurrentTab('monitoreo');
-    if (/evaluacion|simulador/.test(window.location.hash)) {
-      window.history.replaceState(null, '', '#/expedientes/');
-    }
-  };
+
 
   // Sync route with URL hash on mount & change
   useEffect(() => {
@@ -203,7 +211,7 @@ export default function App() {
   };
   const handleSaveEvaluation = async (record:EvaluationRecord):Promise<EvaluationRecord> => {
     const payload={subjectId:record.subjectId,requestId:record.id,record};
-    const data=await request<{record:EvaluationRecord;subject:Subject}>('saveEvaluation',payload);
+    const data=await request<{record:EvaluationRecord;subject:Subject}>(historicalEvaluation?'completeHistoricalEvaluation':'saveEvaluation',historicalEvaluation?{id:historicalEvaluation.id,version:historicalEvaluation.analysisVersion||0,subjectId:record.subjectId,record}:payload);
     setRecords(prev=>[data.record,...prev.filter(r=>r.id!==data.record.id)]);setSubjects(prev=>[data.subject,...prev.filter(s=>s.id!==data.subject.id)]);return data.record;
   };
   const handleUpdateRecordStatus = async (id:string,status:EvaluationRecord['status']) => {
@@ -225,7 +233,7 @@ export default function App() {
 
   const tabModules:Record<string,Parameters<typeof can>[1]>={dashboard:'dashboard',monitoreo:'expedientes',sujetos:'sujetos',normativa:'riesgo',ajustes:'ajustes'};
   const permitted=currentTab==='usuarios'?user?.role==='SUPERADMIN':allow(tabModules[currentTab]||'expedientes');
-  useEffect(()=>{if(!loaded||permitted)return;const next=Object.keys(tabModules).find(t=>allow(tabModules[t]));if(next)handleTabChange(next);},[loaded,user,currentTab]);
+  useEffect(()=>{if(!loaded||permitted)return;const next=Object.keys(tabModules).find(t=>allow(tabModules[t]));if(next)window.location.hash=`/${({monitoreo:'expedientes',normativa:'normativa'} as Record<string,string>)[next]||next}/`;},[loaded,user,currentTab]);
   if(!loading&&!user)return <div className="login-shell"><section className="surface p-8 max-w-md"><span className="workspace-kicker">IAFAS · PLA/FT</span><h1 className="text-2xl font-semibold my-4">Acceso al sistema</h1><p className="text-sm mb-6">{serverError||'Iniciá sesión con una cuenta habilitada por el superadministrador.'}</p><a className="button-primary" target="_top" href={sitePath('/signin-with-chatgpt?return_to=%2F')}>{passwordAuth()?'Iniciar sesión':'Iniciar sesión con ChatGPT'}</a><a className="block mt-5 text-sm underline" target="_top" href={sitePath('/signout-with-chatgpt?return_to=%2F')}>Cambiar cuenta</a></section></div>;
   return (
     <div className="app-shell minimal-ui workspace-ui min-h-screen bg-[#FAFBFC] text-slate-800 flex flex-col font-sans antialiased selection:bg-sky-500 selection:text-white">
@@ -271,11 +279,11 @@ export default function App() {
           />
         )}
 
-        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset disabled={!allow('ajustes',true)}><SystemSettingsView canManageData={user?.role==='SUPERADMIN'} criteria={criteria} operationTypes={operationTypesFor(organization)} operationTypesVersion={operationTypesVersion} canImport={allow('sujetos',true)&&allow('expedientes',true)&&allow('ajustes',true)} onImported={loadState} onTypesSaved={(types,version)=>{setOrganization(previous=>({...previous,operationTypes:types}));setOperationTypesVersion(version)}} key={loaded?'loaded':'initial'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}}/></fieldset>}
+        {currentTab==='ajustes'&&allow('ajustes')&&<SystemSettingsView canEdit={allow('ajustes',true)} canManageData={user?.role==='SUPERADMIN'} criteria={criteria} operationTypes={operationTypesFor(organization)} operationTypesVersion={operationTypesVersion} canImport={allow('sujetos',true)&&allow('expedientes',true)&&allow('ajustes',true)} onImported={loadState} onTypesSaved={(types,version)=>{setOrganization(previous=>({...previous,operationTypes:types}));setOperationTypesVersion(version)}} key={loaded?'loaded':'initial'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async (data,expected)=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',{...data,expectedOrganization:expected});setOrganization(result.organization)}}/>}
         {loaded && !loading && currentTab==='sujetos' && allow('sujetos') && <SubjectsView onDelete={user?.role==='SUPERADMIN'?async subject=>{await request('deleteSubject',{id:subject.id,version:subject.updatedAt,confirmed:true});await loadState()}:undefined} canEdit={allow('sujetos',true)} canEvaluate={allow('expedientes',true)} criteria={criteria} subjects={subjects} records={records} onSave={handleSaveSubject} onEvaluate={handleOpenNewEvaluationModal} onViewDossier={setSelectedDossier}/>}
 
         {loaded && !loading && allow('riesgo') && (currentTab === 'normativa' || currentTab === 'parametros' || currentTab === 'matriz' || currentTab === 'umbrales') && (
-          <fieldset disabled={!allow('riesgo',true)}><NormativaMatrizView
+          <NormativaMatrizView canEdit={allow('riesgo',true)}
             onDeleteCriterion={user?.role==='SUPERADMIN'?handleDeleteCriterion:undefined}
             deleting={saving}
             thresholds={thresholds}
@@ -283,7 +291,7 @@ export default function App() {
             criteria={criteria.filter(c=>!c.deletedAt)}
             factorWeights={factorWeights}
             onUpdateCriteria={next=>{void saveConfig({criteria:next}).catch(()=>{})}}
-            onUpdateWeights={next=>{void saveConfig({factorWeights:next}).catch(()=>{})}}
+            onUpdateWeights={next=>saveConfig({factorWeights:next})}
             onOpenAddModal={() => {
               setEditingCriterion(null);
               setIsAddModalOpen(true);
@@ -291,7 +299,7 @@ export default function App() {
             onEditCriterion={handleEditCriterion}
             onResetDefaults={handleResetDefaults}
             onOpenExportModal={handleOpenExportModal}
-          /></fieldset>
+          />
         )}
       </main>
 
@@ -312,12 +320,13 @@ export default function App() {
       {/* ======================================================== */}
 
       {/* 2. Modal Emergente de Carga de Operación / Nueva Evaluación */}
-      <RiskEvaluationModal
+      {isNewEvaluationModalOpen&&loaded&&!loading&&<RiskEvaluationModal
+        existingRecord={historicalEvaluation}
         operationTypes={operationTypesFor(organization)}
         thresholds={thresholds}
         records={records}
         canEditSubject={allow('sujetos',true)}
-        isOpen={isNewEvaluationModalOpen && !loading && !serverError && allow('expedientes',true)}
+        isOpen={isNewEvaluationModalOpen && !loading && allow('expedientes',true)}
         onClose={handleCloseNewEvaluationModal}
         criteria={criteria}
         factorWeights={factorWeights}
@@ -328,12 +337,13 @@ export default function App() {
           setSelectedDossier(rec);
         }}
         initialSubjectData={initialEvaluationSubject}
-      />
+      />}
 
       {selectedAnalysis&&allow('analisis',true)&&<CaseAnalysisModal key={`${selectedAnalysis.id}-${selectedAnalysis.analysisVersion||0}`} record={selectedAnalysis} onClose={()=>setSelectedAnalysis(null)} onSaved={record=>setRecords(prev=>prev.map(r=>r.id===record.id?record:r))}/>}
       {/* 3. Modal Emergente de Consulta: Ficha Oficial de Riesgo / Expediente */}
       <RiskDossierModal
         organization={organization}
+        onCompleteEvaluation={allow('expedientes',true)?record=>{const person=subjects.find(s=>s.id===record.subjectId);setSelectedDossier(null);handleOpenNewEvaluationModal(person||{subjectName:record.subjectName});setHistoricalEvaluation(record)}:undefined}
         record={selectedDossier}
         criteria={criteria}
         onAnalyze={allow('analisis',true)?record=>{setSelectedDossier(null);setSelectedAnalysis(record)}:undefined}
@@ -341,7 +351,7 @@ export default function App() {
       />
 
       {/* 4. Modal Emergente de Carga: Alta / Edición de Parámetro de Matriz */}
-      <AddParameterModal
+      {isAddModalOpen&&<AddParameterModal
         isOpen={isAddModalOpen}
         onClose={() => {
           setIsAddModalOpen(false);
@@ -349,10 +359,10 @@ export default function App() {
         }}
         onSave={handleSaveCriterion}
         editingCriterion={editingCriterion}
-      />
+      />}
 
       {/* 5. Modal Emergente de Consulta / Descarga: Centro de Exportación */}
-      <ExportReportsModal
+      {isExportModalOpen&&<ExportReportsModal
         organization={organization}
         isOpen={isExportModalOpen && (allow('expedientes')||allow('riesgo'))}
         onClose={() => setIsExportModalOpen(false)}
@@ -361,7 +371,7 @@ export default function App() {
         factorWeights={factorWeights}
         thresholds={thresholds}
         initialReportType={exportInitialType}
-      />
+      />}
 
     </div>
   );

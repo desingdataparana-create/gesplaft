@@ -85,6 +85,7 @@ export interface CaseReview {
 }
 
 export interface EvaluationRecord {
+  evaluationCompletedAt?:string;
   evaluationPending?:boolean;
   sourceData?:Record<string,string>;
   sourceRow?:number;

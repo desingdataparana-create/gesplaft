@@ -19,6 +19,7 @@ interface RiskDossierModalProps {
   record: EvaluationRecord | null;
   criteria: RiskCriterion[];
   onClose: () => void;
+  onCompleteEvaluation?:(record:EvaluationRecord)=>void;
   onAnalyze?: (record:EvaluationRecord)=>void;
 }
 
@@ -27,7 +28,7 @@ export const RiskDossierModal: React.FC<RiskDossierModalProps> = ({
   record,
   criteria,
   onClose,
-  onAnalyze,
+  onAnalyze,onCompleteEvaluation,
 }) => {
   if (!record) return null;
 
@@ -48,6 +49,7 @@ export const RiskDossierModal: React.FC<RiskDossierModalProps> = ({
             <span className="truncate">Ficha Oficial de Evaluación PLA/FT ({record.dossierNumber})</span>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {record.evaluationPending&&onCompleteEvaluation&&!['JUSTIFICADO','REPORTE_ROS'].includes(record.status)&&<button className="button-primary" onClick={()=>onCompleteEvaluation(record)}>Completar evaluación</button>}
             {onAnalyze&&<button className="button-secondary" onClick={()=>onAnalyze(record)}>Analizar</button>}
             <button
               onClick={handlePrint}
@@ -93,7 +95,7 @@ export const RiskDossierModal: React.FC<RiskDossierModalProps> = ({
             </div>
           </div>
 
-          {record.evaluationPending&&<section className="p-4 bg-amber-50 rounded-xl space-y-2"><h3 className="font-semibold">Registro histórico pendiente de evaluación</h3><p>Se conserva la clasificación original. No se calculó puntaje ni se determinó debida diligencia. Completá y verificá los parámetros antes de una nueva evaluación.</p>{!record.taxId&&<p>Documento pendiente. No se creó una ficha de sujeto.</p>}<dl className="grid sm:grid-cols-2 gap-2">{Object.entries(record.sourceData||{}).map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value||'Sin informar'}</dd></div>)}</dl><p>Fila original: {record.sourceRow}</p></section>}
+          {record.sourceData&&<section className="p-4 bg-amber-50 rounded-xl space-y-2"><h3 className="font-semibold">Datos del archivo de origen</h3><p>{record.evaluationPending?'Se conserva la clasificación original. Completá la evaluación en este expediente para determinar puntaje y medidas.':`Evaluación completada el ${new Date(record.evaluationCompletedAt||record.timestamp).toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires'})}. Los datos originales se conservan a continuación.`}</p>{!record.taxId&&<p>Documento pendiente. No se creó una ficha de sujeto.</p>}<dl className="grid sm:grid-cols-2 gap-2">{Object.entries(record.sourceData||{}).map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value||'Sin informar'}</dd></div>)}</dl><p>Fila original: {record.sourceRow}</p></section>}
           {record.evaluationScope&&<section className="surface p-3 text-xs text-slate-600"><p>{record.evaluationScope.reason}</p><p>Política de evaluación: {record.evaluationPolicyVersion}</p></section>}
           {/* Section: Subject Information */}
           <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-3">
@@ -205,8 +207,8 @@ export const RiskDossierModal: React.FC<RiskDossierModalProps> = ({
               <div>
                 <div className="text-[11px] text-slate-500 font-bold uppercase">Medidas Obligatorias</div>
                 <div className="text-xs space-y-1.5 text-slate-700 mt-2">
-                  <div>• DJOF Requerida: <strong>{record.requiresDJOF ? 'SÍ (Con certificación)' : 'NO'}</strong></div>
-                  <div>• Legajo Documental: <strong>{record.requiresDocumentation ? 'SÍ' : 'NO'}</strong></div>
+                  <div>• DJOF Requerida: <strong>{record.evaluationPending?'PENDIENTE DE EVALUAR':record.requiresDJOF ? 'SÍ' : 'NO'}</strong></div>
+                  <div>• Legajo Documental: <strong>{record.evaluationPending?'PENDIENTE DE EVALUAR':record.requiresDocumentation ? 'SÍ' : 'NO'}</strong></div>
                   <div>• Estado Actual: <strong>{record.status}</strong></div>
                 </div>
               </div>

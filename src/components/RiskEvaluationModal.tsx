@@ -3,7 +3,7 @@ import {parseImportDate} from '../utils/operationImport';
 import { SubjectEditor } from './SubjectsView';
 import { SubjectNameField } from './SubjectNameField';
 import { calculateRisk } from '../utils/calculateRisk';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   RiskCriterion, 
   FactorWeight, 
@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 
 interface RiskEvaluationModalProps {
+  existingRecord?:EvaluationRecord|null;
   operationTypes:OperationType[];
   canEditSubject?: boolean;
   thresholds:import('../types').RegulatoryThreshold[];
@@ -44,7 +45,7 @@ interface RiskEvaluationModalProps {
 }
 
 export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
-  thresholds,records,operationTypes,
+  thresholds,records,operationTypes,existingRecord,
   canEditSubject=true,
   isOpen,
   onClose,
@@ -55,15 +56,15 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   onViewDossier,
   initialSubjectData,
 }) => {
-  const [operationDate,setOperationDate]=useState('');
+  const [operationDate,setOperationDate]=useState(()=>existingRecord?.operationAt?businessDateTimeInput(new Date(existingRecord.operationAt)):businessDateTimeInput());
   const [conditionConfirmed,setConditionConfirmed]=useState(false);
   const currentLocalDate=()=>businessDateTimeInput();
-  const [requestId,setRequestId]=useState('');
-  const [subjectUpdatedAt,setSubjectUpdatedAt]=useState<string|undefined>();
-  const [subjectId, setSubjectId] = useState('');
-  const [address, setAddress] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+  const [requestId,setRequestId]=useState(()=>crypto.randomUUID());
+  const [subjectUpdatedAt,setSubjectUpdatedAt]=useState<string|undefined>(initialSubjectData?.updatedAt);
+  const [subjectId, setSubjectId] = useState(initialSubjectData?.id||'');
+  const [address, setAddress] = useState(initialSubjectData?.address||'');
+  const [email, setEmail] = useState(initialSubjectData?.email||'');
+  const [phone, setPhone] = useState(initialSubjectData?.phone||'');
   const [editingSubject,setEditingSubject]=useState<Partial<Subject>|null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const selectSubject = (subject:Subject) => {
@@ -73,44 +74,24 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   };
 
   // Form State
-  const [subjectType, setSubjectType] = useState<'PERSONA_FISICA' | 'PERSONA_JURIDICA' | 'AGENCIA'>('PERSONA_FISICA');
-  const [subjectName, setSubjectName] = useState('');
-  const [taxId, setTaxId] = useState('');
-  const [isPep, setIsPep] = useState(false);
-  const [pepDetails, setPepDetails] = useState('');
-  const [activity, setActivity] = useState('');
-  const [operationType, setOperationType] = useState(operationTypes.find(t=>t.active)?.code||'');
-  const [amountARS, setAmountARS] = useState<number>(0);
-  const [department, setDepartment] = useState('');
-  const [channelName, setChannelName] = useState('');
-  const [notes, setNotes] = useState('');
+  const [subjectType, setSubjectType] = useState<'PERSONA_FISICA' | 'PERSONA_JURIDICA' | 'AGENCIA'>(initialSubjectData?.subjectType||'PERSONA_FISICA');
+  const [subjectName, setSubjectName] = useState(initialSubjectData?.subjectName||'');
+  const [taxId, setTaxId] = useState(initialSubjectData?.taxId||'');
+  const [isPep, setIsPep] = useState(initialSubjectData?.pepStatus||false);
+  const [pepDetails, setPepDetails] = useState(initialSubjectData?.pepDetails||'');
+  const [activity, setActivity] = useState(initialSubjectData?.activity||'');
+  const [operationType, setOperationType] = useState(existingRecord?.operationType||operationTypes.find(t=>t.active)?.code||'');
+  const [amountARS, setAmountARS] = useState<number>(existingRecord?.amountARS||0);
+  const [department, setDepartment] = useState(existingRecord?.locationDepartment==='Sin informar'?'':existingRecord?.locationDepartment||'');
+  const [channelName, setChannelName] = useState(existingRecord?.channelName||'');
+  const [notes, setNotes] = useState(existingRecord?.notes||'');
 
   // Selected criterion IDs
-  const [selectedCriteriaIds, setSelectedCriteriaIds] = useState<string[]>([]);
+  const [selectedCriteriaIds, setSelectedCriteriaIds] = useState<string[]>([...(initialSubjectData?.clientCriteriaIds||[]),...(operationTypes.find(t=>t.active)?.productCriterionId?[operationTypes.find(t=>t.active)!.productCriterionId!]:[])]);
   const [validationError, setValidationError] = useState('');
 
   const [savedRecord, setSavedRecord] = useState<EvaluationRecord | null>(null);
 
-  const resetForm = () => {
-    setRequestId(crypto.randomUUID());setSubjectUpdatedAt(initialSubjectData?.updatedAt);
-    setEditingSubject(null);
-    setOperationDate(currentLocalDate());setConditionConfirmed(false);
-    setSubjectId(initialSubjectData?.id || '');
-    setAddress(initialSubjectData?.address || '');setEmail(initialSubjectData?.email || '');setPhone(initialSubjectData?.phone || '');
-
-    setSubjectType(initialSubjectData?.subjectType || 'PERSONA_FISICA');
-    setSubjectName(initialSubjectData?.subjectName || '');
-    setTaxId(initialSubjectData?.taxId || '');
-    setIsPep(initialSubjectData?.pepStatus || false);
-    setPepDetails(initialSubjectData?.pepDetails || '');
-    setActivity(initialSubjectData?.activity || '');
-    setOperationType(operationTypes.find(t=>t.active)?.code||''); setAmountARS(0); setDepartment('');
-    setChannelName(''); setNotes(''); setSelectedCriteriaIds([...(initialSubjectData?.clientCriteriaIds||[]),...(operationTypes.find(t=>t.active)?.productCriterionId?[operationTypes.find(t=>t.active)!.productCriterionId!]:[])]);
-    setSavedRecord(null); setValidationError('');
-  };
-  useEffect(() => { if (isOpen) resetForm(); }, [initialSubjectData, isOpen]);
-
-  useEffect(()=>setConditionConfirmed(false),[subjectId,isPep,pepDetails,activity]);
   const nextOperationForSubject=()=>{
     if(!savedRecord)return;
     setRequestId(crypto.randomUUID());
@@ -124,7 +105,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   const complete=!!subjectId&&['CLIENTE','PRODUCTO','CANAL','GEOGRAFIA'].every(category=>criteria.some(c=>c.active&&!c.deletedAt&&c.category===category&&selectedCriteriaIds.includes(c.id)));
   // Scoring Calculation Engine
   const { weightedScore, rawScore, riskLevel, dueDiligence, alerts, requiresDJOF, requiresDocumentation,evaluationScope,categoryBreakdown } = useMemo(() => {
-    return calculateRisk(criteria, factorWeights, selectedCriteriaIds, isPep, amountARS,thresholds,{operationAt:operationDate&&Number.isFinite(Date.parse(operationDate))?new Date(operationDate).toISOString():undefined,subjectType,operationType:selectedType,records:records.filter(r=>r.subjectId===subjectId)});
+    return calculateRisk(criteria, factorWeights, selectedCriteriaIds, isPep, amountARS,thresholds,{subjectType,operationType:selectedType,records:records.filter(r=>r.subjectId===subjectId)});
   }, [criteria, factorWeights, selectedCriteriaIds, isPep, amountARS,thresholds,operationDate,subjectType,records,subjectId,selectedType]);
 
   const handleSave = async () => {
@@ -133,14 +114,14 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     if(!subjectId){setValidationError('Seleccioná un sujeto registrado o creá su ficha con «Nuevo sujeto».');return;}
     if(!department.trim() || !channelName.trim() || !Number.isFinite(amountARS) || amountARS<=0){setValidationError('Completá departamento, sala y un monto mayor a cero.');return;}
     if(!selectedCriteriaIds.some(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')){setValidationError('Completá los factores personales desde «Editar ficha del sujeto».');return;}
-    if(['PRODUCTO','CANAL','GEOGRAFIA'].some(category=>!criteria.some(c=>c.active&&c.category===category&&selectedCriteriaIds.includes(c.id)))){setValidationError('Seleccioná al menos un factor de producto, canal y geografía.');return;}
+    if(['PRODUCTO','CANAL','GEOGRAFIA'].some(category=>!criteria.some(c=>c.active&&c.category===category&&selectedCriteriaIds.includes(c.id)))){setValidationError('Seleccioná un producto, un canal y una zona geográfica.');return;}
     if(!conditionConfirmed){setValidationError('Confirmá la condición del sujeto para esta operación.');return;}
     if(isPep && !pepDetails.trim()){setValidationError('Indicá el cargo o condición PEP evaluada.');return;}
     if(!operationDate || !Number.isFinite(new Date(operationDate).getTime())){setValidationError('Indicá la fecha y hora de la operación.');return;}
     let operationAt:string;try{operationAt=parseImportDate(operationDate);}catch(e){setValidationError((e as Error).message);return;}
     setValidationError('');
     const newRecordId = requestId;
-    const dossierNo = `EXP-PLA-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const dossierNo = existingRecord?.dossierNumber||`EXP-PLA-${new Date().getFullYear()}-${newRecordId.slice(0,8).toUpperCase()}`;
 
     const newRecord: EvaluationRecord = {
       subjectUpdatedAt,
@@ -191,7 +172,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/30 overflow-y-auto">
       {canEditSubject&&editingSubject&&<SubjectEditor criteria={criteria} initial={editingSubject} onClose={()=>setEditingSubject(null)} onSave={async data=>{const saved=await onSaveSubject(data);selectSubject(saved);setEditingSubject(null)}}/>}
-      <div role="dialog" aria-modal={!editingSubject} aria-hidden={!!editingSubject} inert={!!editingSubject} aria-label="Nuevo expediente" className="w-full max-w-5xl bg-white rounded-2xl sm:rounded-xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh] my-auto">
+      <div role="dialog" aria-modal={!editingSubject} aria-hidden={!!editingSubject} inert={!!editingSubject} aria-label={existingRecord?'Completar evaluación histórica':'Nuevo expediente'} className="w-full max-w-5xl bg-white rounded-2xl sm:rounded-xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh] my-auto">
         
         {/* Sticky Header */}
         <div className="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
@@ -202,7 +183,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
-                  Nuevo expediente
+                  {existingRecord?'Completar evaluación histórica':'Nuevo expediente'}
                 </h3>
               </div>
               <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
@@ -222,6 +203,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
 
         {/* Scrollable Modal Content */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1">
+          {!savedRecord&&existingRecord&&<p className="surface p-3 text-xs text-slate-600">Se completará {existingRecord.dossierNumber} con los parámetros y el piso configurados actualmente. La fecha, el importe, la sala y los datos del archivo de origen se conservan.</p>}
           {savedRecord ? (
             /* Success confirmation card */
             <div className="p-6 sm:p-8 bg-emerald-50 border-2 border-emerald-300 rounded-2xl text-center space-y-4 my-auto">
@@ -251,7 +233,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                     <span>Ver ficha de evaluación</span>
                   </button>
                 )}
-                <button
+                {!existingRecord&&<button
                   type="button"
                   onClick={() => {
                     nextOperationForSubject();
@@ -259,7 +241,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                   className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
                 >
                   Otra operación para este sujeto
-                </button>
+                </button>}
                 <button
                   type="button"
                   onClick={onClose}
@@ -293,7 +275,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                     }}/>
                     {subjectId&&<div className="sm:col-span-2 text-xs text-slate-500"><span className="font-medium text-teal-700">Ficha vinculada · {taxId}</span><details className="mt-2"><summary>Ver datos personales</summary><div className="mt-2 space-y-1"><p>{address||'Dirección pendiente'}</p><p>{email||'Correo pendiente'}</p><p>{phone||'Teléfono pendiente'}</p></div></details></div>}
                     {canEditSubject&&<div className="sm:col-span-2 flex flex-wrap gap-2"><button type="button" className="button-secondary" onClick={()=>setEditingSubject({subjectName:subjectId?'':subjectName})}><Plus size={15}/>Nuevo sujeto</button>{subjectId&&<button type="button" className="button-secondary" onClick={()=>setEditingSubject({id:subjectId,updatedAt:subjectUpdatedAt,subjectName,taxId,subjectType,address,email,phone,activity,pepStatus:isPep,pepDetails,clientCriteriaIds:selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')})}>Editar ficha</button>}</div>}
-                    <label className="field-label sm:col-span-2">Fecha y hora de la operación (Argentina)<input aria-label="Fecha y hora de la operación" type="datetime-local" value={operationDate} onChange={e=>setOperationDate(e.target.value)}/></label>
+                    <label className="field-label sm:col-span-2">Fecha y hora de la operación (Argentina)<input aria-label="Fecha y hora de la operación" type="datetime-local" value={operationDate} readOnly={!!existingRecord} onChange={e=>setOperationDate(e.target.value)}/></label>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">Tipo de Operación</label>
                       <select
@@ -315,6 +297,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                           min="0.01"
                           step="0.01"
                           value={amountARS}
+                          readOnly={!!existingRecord}
                           onChange={(e) => setAmountARS(Number(e.target.value))}
                           className="w-full py-2 pl-8 pr-3 bg-white border border-slate-300 rounded-xl font-mono text-sm font-bold focus:outline-hidden focus:border-teal-500"
                         />
@@ -358,6 +341,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                       <input
                         type="text"
                         value={channelName}
+                        readOnly={!!existingRecord}
                         onChange={(e) => setChannelName(e.target.value)}
                         placeholder="Ej. Casino Concordia, Agencia 104..."
                         className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium focus:outline-hidden focus:border-teal-500"
@@ -466,7 +450,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                     }`}>
                       <span className="font-semibold">Legajo e Identificación:</span>
                       <span className="font-bold text-[10px] px-2 py-0.5 rounded bg-white border border-current">
-                        {requiresDocumentation ? 'OBLIGATORIO' : 'SIMPLIFICADO'}
+                        {!complete?'PENDIENTE':requiresDocumentation ? 'REQUERIDO' : 'SIMPLIFICADO'}
                       </span>
                     </div>
 
@@ -475,7 +459,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                     }`}>
                       <span className="font-semibold">Declaración de Fondos (DJOF):</span>
                       <span className="font-bold text-[10px] px-2 py-0.5 rounded bg-white border border-current">
-                        {requiresDJOF ? 'EXIGIBLE' : 'NO APLICA'}
+                        {!complete?'PENDIENTE':requiresDJOF ? 'REQUERIDA' : 'NO REQUERIDA'}
                       </span>
                     </div>
 
@@ -502,7 +486,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                       className="w-full py-3 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:shadow"
                     >
                       <Save className="w-4 h-4" />
-                      <span>{isSaving?'Guardando en base de datos…':'Guardar expediente'}</span>
+                      <span>{isSaving?'Guardando en base de datos…':existingRecord?'Completar evaluación':'Guardar expediente'}</span>
                     </button>
                   </div>
                 </div>

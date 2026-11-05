@@ -1,3 +1,4 @@
+import {businessPeriod} from '../utils/businessTime';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   X, 
@@ -56,7 +57,7 @@ export const ExportReportsModal: React.FC<ExportReportsModalProps> = ({
 }) => {
   const [reportType, setReportType] = useState<'EXPEDIENTES' | 'PARAMETROS' | 'UMBRALES' | 'ESTADISTICAS'>(initialReportType);
 
-  useEffect(()=>{if(isOpen){setReportType(initialReportType);setLastExported(null);}},[isOpen,initialReportType]);
+
 
   // Period / Date filters
   const [periodPreset, setPeriodPreset] = useState<string>('TODO');
@@ -84,43 +85,9 @@ export const ExportReportsModal: React.FC<ExportReportsModalProps> = ({
   // Handle period preset change
   const handlePresetChange = (preset: string) => {
     setPeriodPreset(preset);
-    const today = new Date();
-    const formatDate = (d: Date) => d.toISOString().slice(0, 10);
-
-    if (preset === 'TODO') {
-      setStartDate('');
-      setEndDate('');
-    } else if (preset === 'HOY') {
-      const todayStr = formatDate(today);
-      setStartDate(todayStr);
-      setEndDate(todayStr);
-    } else if (preset === '7_DIAS') {
-      const d = new Date();
-      d.setDate(d.getDate() - 7);
-      setStartDate(formatDate(d));
-      setEndDate(formatDate(today));
-    } else if (preset === '30_DIAS') {
-      const d = new Date();
-      d.setDate(d.getDate() - 30);
-      setStartDate(formatDate(d));
-      setEndDate(formatDate(today));
-    } else if (preset === 'MES_ACTUAL') {
-      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-      const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      setStartDate(formatDate(firstDay));
-      setEndDate(formatDate(lastDay));
-    } else if (preset === 'TRIMESTRE_ACTUAL') {
-      const currentQuarter = Math.floor(today.getMonth() / 3);
-      const firstDay = new Date(today.getFullYear(), currentQuarter * 3, 1);
-      const lastDay = new Date(today.getFullYear(), (currentQuarter + 1) * 3, 0);
-      setStartDate(formatDate(firstDay));
-      setEndDate(formatDate(lastDay));
-    } else if (preset === 'ANIO_ACTUAL') {
-      const firstDay = new Date(today.getFullYear(), 0, 1);
-      const lastDay = new Date(today.getFullYear(), 11, 31);
-      setStartDate(formatDate(firstDay));
-      setEndDate(formatDate(lastDay));
-    }
+    const period=businessPeriod(preset);
+    setStartDate(period.start);
+    setEndDate(period.end);
   };
 
   // Filtered records based on active options

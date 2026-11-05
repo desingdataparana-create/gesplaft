@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { RiskCriterion, RiskFactorCategory, RiskLevel } from '../types';
 import { X, Plus, Save, AlertCircle, Sliders } from 'lucide-react';
 
@@ -15,42 +15,19 @@ export const AddParameterModal: React.FC<AddParameterModalProps> = ({
   onSave,
   editingCriterion,
 }) => {
-  const [category, setCategory] = useState<RiskFactorCategory>('CLIENTE');
-  const [code, setCode] = useState('CLI-08');
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [subgroup, setSubgroup] = useState('');
-  const [score, setScore] = useState<number>(3);
-  const [riskLevel, setRiskLevel] = useState<RiskLevel>('MEDIO');
-  const [mitigationFactor, setMitigationFactor] = useState<number>(0.7);
-  const [regulatoryBase, setRegulatoryBase] = useState('Res. UIF 194/2023');
+  const [category, setCategory] = useState<RiskFactorCategory>(editingCriterion?.category||'CLIENTE');
+  const [code, setCode] = useState(editingCriterion?.code||'');
+  const [name, setName] = useState(editingCriterion?.name||'');
+  const [description, setDescription] = useState(editingCriterion?.description||'');
+  const [subgroup, setSubgroup] = useState(editingCriterion?.subgroup||'');
+  const [score, setScore] = useState<number>(editingCriterion?.score||3);
+  const [riskLevel, setRiskLevel] = useState<RiskLevel>(editingCriterion?.riskLevel||'MEDIO');
+  const mitigationFactor=editingCriterion?.mitigationFactor??1;
+  const [regulatoryBase, setRegulatoryBase] = useState(editingCriterion?.regulatoryBase||'Res. UIF 194/2023');
 
   const [saveError,setSaveError]=useState('');
   const [saveBusy,setSaveBusy]=useState(false);
-  useEffect(() => {
-    setSaveError('');
-    if (editingCriterion) {
-      setCategory(editingCriterion.category);
-      setCode(editingCriterion.code);
-      setName(editingCriterion.name);
-      setDescription(editingCriterion.description);
-      setSubgroup(editingCriterion.subgroup);
-      setScore(editingCriterion.score);
-      setRiskLevel(editingCriterion.riskLevel);
-      setMitigationFactor(editingCriterion.mitigationFactor);
-      setRegulatoryBase(editingCriterion.regulatoryBase);
-    } else {
-      setCategory('CLIENTE');
-      setCode(`CLI-${Math.floor(10 + Math.random() * 89)}`);
-      setName('');
-      setDescription('');
-      setSubgroup('General');
-      setScore(3);
-      setRiskLevel('MEDIO');
-      setMitigationFactor(0.7);
-      setRegulatoryBase('Res. UIF 194/2023');
-    }
-  }, [editingCriterion, isOpen]);
+
 
   const handleScoreChange = (newScore: number) => {
     setScore(newScore);
@@ -225,24 +202,7 @@ export const AddParameterModal: React.FC<AddParameterModalProps> = ({
                 </div>
               </div>
 
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="font-bold text-slate-700">Factor Mitigador</label>
-                  <span className="font-mono font-bold text-slate-900">x{mitigationFactor.toFixed(2)}</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1.0"
-                  step="0.05"
-                  value={mitigationFactor}
-                  onChange={(e) => setMitigationFactor(Number(e.target.value))}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-600"
-                />
-                <div className="text-[10px] text-slate-400 mt-1">
-                  Coeficiente reductor ante control eficaz.
-                </div>
-              </div>
+
             </div>
 
           </div>

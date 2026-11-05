@@ -141,6 +141,8 @@ export function generateRecordsXML(
     xml += `        <departamento>${escapeXml(r.locationDepartment)}</departamento>\n`;
     xml += `        <canalSalaAgencia>${escapeXml(r.channelName)}</canalSalaAgencia>\n`;
     xml += `      </operacion>\n`;
+    if(r.sourceData){xml += `      <origen fila="${r.sourceRow||''}">\n`;for(const [key,value] of Object.entries(r.sourceData))xml+=`        <dato nombre="${escapeXml(key)}">${escapeXml(value)}</dato>\n`;xml+='      </origen>\n';}
+    xml += `      <evaluacionPendiente>${!!r.evaluationPending}</evaluacionPendiente>\n`;
     xml += `      <scoring>\n`;
     xml += `        <puntajeBruto>${r.evaluationPending?'':r.rawScore}</puntajeBruto>\n`;
     xml += `        <puntajePonderado>${r.evaluationPending?'':r.weightedScore}</puntajePonderado>\n`;
@@ -148,8 +150,8 @@ export function generateRecordsXML(
     xml += `        <debidaDiligencia>${escapeXml(r.evaluationPending?'PENDIENTE':r.dueDiligenceLevel)}</debidaDiligencia>\n`;
     xml += `      </scoring>\n`;
     xml += `      <cumplimiento>\n`;
-    xml += `        <requiereDJOF>${r.requiresDJOF ? 'true' : 'false'}</requiereDJOF>\n`;
-    xml += `        <requiereDocumentacion>${r.requiresDocumentation ? 'true' : 'false'}</requiereDocumentacion>\n`;
+    xml += `        <requiereDJOF>${r.evaluationPending?'PENDIENTE':r.requiresDJOF ? 'true' : 'false'}</requiereDJOF>\n`;
+    xml += `        <requiereDocumentacion>${r.evaluationPending?'PENDIENTE':r.requiresDocumentation ? 'true' : 'false'}</requiereDocumentacion>\n`;
     xml += `        <estadoExpediente>${escapeXml(r.status)}</estadoExpediente>\n`;
     xml += `        <observacionesAuditor>${escapeXml(r.notes)}</observacionesAuditor>\n`;
     xml += `      </cumplimiento>\n`;
@@ -357,7 +359,7 @@ export function generateRecordsXLS(
     xml += `        <Cell ss:StyleID="CellCenter"><Data ss:Type="${r.evaluationPending?'String':'Number'}">${r.evaluationPending?'SIN RECALCULAR':r.weightedScore}</Data></Cell>\n`;
     xml += `        <Cell ss:StyleID="${riskStyle}"><Data ss:Type="String">${escapeXml(r.evaluationPending?r.riskLevel+' (FUENTE; SIN RECALCULAR)':r.riskLevel)}</Data></Cell>\n`;
     xml += `        <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${escapeXml(r.evaluationPending?'PENDIENTE':r.dueDiligenceLevel)}</Data></Cell>\n`;
-    xml += `        <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${r.requiresDJOF ? 'SÍ' : 'NO'}</Data></Cell>\n`;
+    xml += `        <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${r.evaluationPending?'PENDIENTE':r.requiresDJOF ? 'SÍ' : 'NO'}</Data></Cell>\n`;
     xml += `        <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${escapeXml(r.status.replace('_', ' '))}</Data></Cell>\n`;
     xml += `        <Cell ss:StyleID="CellText"><Data ss:Type="String">${escapeXml(r.evaluator)}</Data></Cell>\n`;
     xml += `        <Cell ss:StyleID="CellText"><Data ss:Type="String">${escapeXml(r.notes || '')}</Data></Cell>\n`;
@@ -471,8 +473,8 @@ export function generateRecordsCSV(
       `${r.evaluationPending?'':r.weightedScore}`,
       `"${r.riskLevel}${r.evaluationPending?' (FUENTE; SIN RECALCULAR)':''}"`,
       `"${r.evaluationPending?'PENDIENTE':r.dueDiligenceLevel}"`,
-      `"${r.requiresDJOF ? 'SI' : 'NO'}"`,
-      `"${r.requiresDocumentation ? 'SI' : 'NO'}"`,
+      `"${r.evaluationPending?'PENDIENTE':r.requiresDJOF ? 'SI' : 'NO'}"`,
+      `"${r.evaluationPending?'PENDIENTE':r.requiresDocumentation ? 'SI' : 'NO'}"`,
       `"${r.status}"`,
       `"${(r.evaluator || '').replace(/"/g, '""')}"`,
       `"${(r.evaluatorRole || '').replace(/"/g, '""')}"`,

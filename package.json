@@ -21,7 +21,9 @@
     "test:data": "node scripts/test-data.mjs",
     "test:vps": "node scripts/test-vps.mjs",
     "test:import": "node scripts/test-import.mjs",
-    "test:import:files": "node scripts/test-import-files.mjs"
+    "test:import:files": "node scripts/test-import-files.mjs",
+    "test:audit": "node scripts/test-audit.mjs",
+    "test:ui": "node scripts/test-ui.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

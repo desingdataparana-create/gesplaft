@@ -6,7 +6,7 @@ import {join} from 'node:path';
 const dir=await mkdtemp(join(tmpdir(),'gesplaft-unit-'));
 try {
   const file=join(dir,'logic.mjs');
-  await build({stdin:{contents:`export * from './src/utils/calculateRisk';export * from './src/utils/riskConfiguration';export * from './src/utils/exportUtils';export * from './src/data/initialRiskData';export * from './src/access';export * from './src/utils/operationImport';export * from './src/utils/operationTypes';export {businessDateTimeInput} from './src/utils/businessTime';`,resolveDir:process.cwd()},outfile:file,bundle:true,format:'esm',platform:'node'});
+  await build({stdin:{contents:`export * from './src/utils/calculateRisk';export * from './src/utils/riskConfiguration';export * from './src/utils/exportUtils';export * from './src/data/initialRiskData';export * from './src/access';export * from './src/utils/operationImport';export * from './src/utils/operationTypes';export {businessDateTimeInput,businessPeriod} from './src/utils/businessTime';`,resolveDir:process.cwd()},outfile:file,bundle:true,format:'esm',platform:'node'});
   const x=await import(file),ids=['cli-01','prod-01','can-01','geo-01'];
   const floor={...x.INITIAL_REGULATORY_THRESHOLDS[0],amountARS:100};
   const run=(amount,ts=[floor],context={})=>x.calculateRisk(x.INITIAL_RISK_CRITERIA,x.INITIAL_FACTOR_WEIGHTS,ids,false,amount,ts,context);
@@ -58,5 +58,16 @@ try {
   assert.equal(online.evaluationScope.meetsFloor,false);
   const inactive=x.INITIAL_RISK_CRITERIA.map(c=>c.id==='cli-07'?{...c,active:false}:c);
   assert.equal(x.calculateRisk(inactive,x.INITIAL_FACTOR_WEIGHTS,[...ids,'cli-07'],false,40,[floor]).riskLevel,run(40).riskLevel,'inactive criterion cannot force a high risk');
+  assert.deepEqual(x.businessPeriod('HOY',new Date('2026-11-01T01:00:00Z')),{start:'2026-10-31',end:'2026-10-31'});
+  assert.deepEqual(x.businessPeriod('7_DIAS',new Date('2026-11-01T01:00:00Z')),{start:'2026-10-25',end:'2026-10-31'});
+  assert.deepEqual(x.businessPeriod('30_DIAS',new Date('2026-11-01T01:00:00Z')),{start:'2026-10-02',end:'2026-10-31'});
+  assert.deepEqual(x.businessPeriod('MES_ACTUAL',new Date('2026-11-01T01:00:00Z')),{start:'2026-10-01',end:'2026-10-31'});
+  assert.deepEqual(x.businessPeriod('TRIMESTRE_ACTUAL',new Date('2026-04-01T01:00:00Z')),{start:'2026-01-01',end:'2026-03-31'});
+  assert.deepEqual(x.businessPeriod('ANIO_ACTUAL',new Date('2027-01-01T01:00:00Z')),{start:'2026-01-01',end:'2026-12-31'});
+  const pending={...historical,evaluationPending:true,requiresDJOF:false,requiresDocumentation:false};
+  const exported=x.parseCsv(x.generateRecordsCSV([pending]));
+  assert.equal(exported[1][15],'PENDIENTE');assert.equal(exported[1][16],'PENDIENTE');
+  const xml=x.generateRecordsXML([pending],[],{title:'QA',generatedAt:'QA',generatedBy:'QA',totalRecords:1,totalAmountARS:600});
+  assert.match(xml,/<evaluacionPendiente>true<\/evaluacionPendiente>/);assert.match(xml,/<requiereDJOF>PENDIENTE<\/requiereDJOF>/);
   console.log('PASS: piso UIF, límites decimales, configuración anterior, cuatro factores, PEP, fechas, CSV y permisos.');
 } finally {await rm(dir,{recursive:true,force:true});}

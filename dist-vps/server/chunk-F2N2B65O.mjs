@@ -16,8 +16,14 @@ __export(route_exports, {
   dynamic: () => dynamic
 });
 
-// app/api/data/historicalImport.ts
-import { z } from "zod";
+// src/utils/businessTime.ts
+var BUSINESS_TIME_ZONE = "America/Argentina/Buenos_Aires";
+function businessDate(value) {
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: BUSINESS_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  return ["year", "month", "day"].map((k) => parts.find((p) => p.type === k)?.value).join("-");
+}
 
 // src/utils/operationImport.ts
 var IMPORT_HEADERS = ["referencia", "documento", "nombre", "tipo_sujeto", "actividad", "pep", "detalle_pep", "criterios_sujeto", "tipo_operacion", "fecha_operacion", "importe_ars", "departamento", "sala", "producto", "canal", "zona", "direccion", "email", "telefono", "notas"];
@@ -41,6 +47,9 @@ function parseImportDate(value) {
   if (Date.parse(v) > Date.now() + 6e4) throw Error("La operaci\xF3n no puede tener fecha futura.");
   return new Date(v).toISOString();
 }
+
+// app/api/data/historicalImport.ts
+import { z } from "zod";
 
 // src/utils/historicalImport.ts
 var HISTORICAL_HEADERS = ["FECHA DE COBRO", "NOMBRE Y APELLIDO", "DNI", "CUIT/CUIL", "NACIONALIDAD", "SALA", "IMPORTE", "MEDIO DE PAGO", "PROFESION", "PEP(S/N)", "SITUACION CENTRAL DE DEUDORES BCRA", "NIVEL DE RIESGO"];
@@ -110,9 +119,16 @@ import { z as z3 } from "zod";
 // src/utils/validation.ts
 import { z as z2 } from "zod";
 var subjectTypes = ["PERSONA_FISICA", "PERSONA_JURIDICA", "AGENCIA"];
-var subjectSchema = z2.object({ id: z2.string().optional(), updatedAt: z2.string().optional(), subjectName: z2.string().trim().min(2).max(200), taxId: z2.string().trim().min(7).max(20), subjectType: z2.enum(subjectTypes), address: z2.string().trim().max(500).default(""), email: z2.union([z2.literal(""), z2.string().trim().email().max(254)]).default(""), phone: z2.string().trim().max(40).default(""), activity: z2.string().trim().min(2).max(200), pepStatus: z2.boolean(), pepDetails: z2.string().max(1e3).optional(), clientCriteriaIds: z2.array(z2.string()).max(100).default([]) }).refine((s) => /^\d{7,11}$/.test(s.taxId.replace(/\D/g, "")), { message: "Revis\xE1 el DNI/CUIT: debe tener entre 7 y 11 d\xEDgitos." }).refine((s) => !s.phone || s.phone.replace(/\D/g, "").length >= 6, { message: "Revis\xE1 el tel\xE9fono." }).refine((s) => !s.clientCriteriaIds.includes("cli-03") || s.pepStatus, { message: "Marc\xE1 la condici\xF3n PEP si seleccion\xE1s ese par\xE1metro personal." }).refine((s) => !s.pepStatus || !!s.pepDetails?.trim(), { message: "Indic\xE1 el cargo o condici\xF3n PEP en la ficha del sujeto." });
+var subjectSchema = z2.object({ id: z2.string().optional(), updatedAt: z2.string().optional(), subjectName: z2.string().trim().min(2).max(200), taxId: z2.string().trim().min(7).max(20), subjectType: z2.enum(subjectTypes), address: z2.string().trim().max(500).default(""), email: z2.union([z2.literal(""), z2.string().trim().email().max(254)]).default(""), phone: z2.string().trim().max(40).default(""), activity: z2.string().trim().min(2).max(200), pepStatus: z2.boolean(), pepDetails: z2.string().max(1e3).optional(), clientCriteriaIds: z2.array(z2.string()).max(100).default([]) }).refine((s) => /^[\d.\-\s]+$/.test(s.taxId) && /^\d{7,11}$/.test(s.taxId.replace(/\D/g, "")), { message: "Revis\xE1 el DNI/CUIT: debe tener entre 7 y 11 d\xEDgitos." }).refine((s) => !s.phone || s.phone.replace(/\D/g, "").length >= 6, { message: "Revis\xE1 el tel\xE9fono." }).refine((s) => !s.clientCriteriaIds.includes("cli-03") || s.pepStatus, { message: "Marc\xE1 la condici\xF3n PEP si seleccion\xE1s ese par\xE1metro personal." }).refine((s) => !s.pepStatus || !!s.pepDetails?.trim(), { message: "Indic\xE1 el cargo o condici\xF3n PEP en la ficha del sujeto." });
 var recordSchema = z2.object({ subjectUpdatedAt: z2.string().optional(), operationType: z2.string().trim().min(1).max(80), amountARS: z2.number().finite().positive().max(1e15).multipleOf(0.01), locationDepartment: z2.string().trim().min(1).max(200), channelName: z2.string().trim().min(1).max(200), selectedCriteriaIds: z2.array(z2.string()).min(1).max(200), notes: z2.string().max(1e4) });
-var operationSchema = recordSchema.extend({ operationAt: z2.string().datetime().refine((v) => Date.parse(v) <= Date.now() + 6e4, { message: "La operaci\xF3n no puede tener fecha futura." }), conditionConfirmed: z2.literal(true, { error: "Confirm\xE1 la condici\xF3n del sujeto para esta operaci\xF3n." }), pepStatus: z2.boolean(), pepDetails: z2.string().max(1e3).optional(), activityAtOperation: z2.string().trim().min(2).max(200) }).refine((r) => !r.pepStatus || !!r.pepDetails?.trim(), { message: "Indic\xE1 el cargo o condici\xF3n PEP evaluada." });
+var operationSchema = recordSchema.extend({ operationAt: z2.string().datetime().refine((v) => {
+  try {
+    parseImportDate(v);
+    return true;
+  } catch {
+    return false;
+  }
+}, { message: "La fecha de operaci\xF3n no existe o es futura." }), conditionConfirmed: z2.literal(true, { error: "Confirm\xE1 la condici\xF3n del sujeto para esta operaci\xF3n." }), pepStatus: z2.boolean(), pepDetails: z2.string().max(1e3).optional(), activityAtOperation: z2.string().trim().min(2).max(200) }).refine((r) => !r.pepStatus || !!r.pepDetails?.trim(), { message: "Indic\xE1 el cargo o condici\xF3n PEP evaluada." });
 
 // src/utils/riskConfiguration.ts
 var UIF_FLOOR_CODE = "UMB-ID-01";
@@ -850,6 +866,14 @@ function handleError(e) {
   if (e instanceof Error && e.message === "FORBIDDEN") return json({ error: "Operaci\xF3n no autorizada." }, 403);
   return json({ error: "No se pudo completar la operaci\xF3n en la base de datos. Intent\xE1 nuevamente." }, 500);
 }
+function orgForComparison(value) {
+  return Object.fromEntries(Object.entries(value).filter(([key]) => key !== "operationTypes"));
+}
+function stable(value) {
+  if (Array.isArray(value)) return "[" + value.map(stable).join(",") + "]";
+  if (value && typeof value === "object") return "{" + Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, v]) => JSON.stringify(key) + ":" + stable(v)).join(",") + "}";
+  return JSON.stringify(value);
+}
 var defaultConfig = { criteria: INITIAL_RISK_CRITERIA, factorWeights: INITIAL_FACTOR_WEIGHTS, thresholds: INITIAL_REGULATORY_THRESHOLDS };
 async function configFor(ownerId) {
   const db = getDb();
@@ -872,7 +896,7 @@ async function GET(req) {
     const [config, people, rows] = await Promise.all([configFor(ownerId), db.select().from(subjects).where(eq2(subjects.ownerId, ownerId)).orderBy(desc(subjects.updatedAt)), db.select().from(evaluations).where(eq2(evaluations.ownerId, ownerId)).orderBy(desc(evaluations.createdAt))]);
     const [org] = await db.select().from(organizationSettings).where(eq2(organizationSettings.ownerId, ownerId));
     const records = rows.map((r) => r.record);
-    const dashboard = can(user, "dashboard") ? { subjects: people.length, total: records.length, pending: records.filter((r) => r.status === "PENDIENTE").length, inAnalysis: records.filter((r) => r.status === "EN_ANALISIS").length, closed: records.filter((r) => r.status === "JUSTIFICADO").length, ros: records.filter((r) => r.status === "REPORTE_ROS").length, risk: Object.fromEntries(["BAJO", "MEDIO", "ALTO", "CRITICO"].map((k) => [k, records.filter((r) => r.riskLevel === k).length])) } : null;
+    const dashboard = can(user, "dashboard") ? { subjects: people.length, total: records.length, pending: records.filter((r) => r.status === "PENDIENTE").length, inAnalysis: records.filter((r) => r.status === "EN_ANALISIS").length, closed: records.filter((r) => r.status === "JUSTIFICADO").length, ros: records.filter((r) => r.status === "REPORTE_ROS").length, pendingEvaluation: records.filter((r) => r.evaluationPending).length, risk: Object.fromEntries(["BAJO", "MEDIO", "ALTO", "CRITICO"].map((k) => [k, records.filter((r) => !r.evaluationPending && r.riskLevel === k).length])) } : null;
     return json({ ...config, user, dashboard, organization: { ...org?.organization || DEFAULT_ORGANIZATION, operationTypes: operationTypesFor(org?.organization) }, operationTypesVersion: await operationTypesVersion(operationTypesFor(org?.organization)), subjects: can(user, "sujetos") || can(user, "expedientes", true) ? people : [], records: can(user, "expedientes") ? records.map((r) => can(user, "analisis") ? r : { ...r, analysis: void 0, analysisHistory: void 0 }) : [] });
   } catch (e) {
     return handleError(e);
@@ -883,7 +907,7 @@ async function POST(req) {
     writeOwner(req);
     const user = await access(req), ownerId = user.ownerId, db = getDb();
     const { action, payload } = z4.object({ action: z4.string(), payload: z4.record(z4.string(), z4.unknown()) }).parse(await req.json());
-    const required = { previewHistoricalImport: "expedientes", importHistoricalOperations: "expedientes", deleteSubject: "sujetos", deleteEvaluation: "expedientes", saveOrganization: "ajustes", saveOperationTypes: "ajustes", previewOperationsImport: "expedientes", importOperations: "expedientes", saveSubject: "sujetos", saveEvaluation: "expedientes", reviewCase: "analisis", updateStatus: "analisis", saveSettings: "riesgo", deleteCriterion: "riesgo", importLocal: "expedientes" };
+    const required = { previewHistoricalImport: "expedientes", importHistoricalOperations: "expedientes", deleteSubject: "sujetos", deleteEvaluation: "expedientes", saveOrganization: "ajustes", saveOperationTypes: "ajustes", previewOperationsImport: "expedientes", importOperations: "expedientes", saveSubject: "sujetos", saveEvaluation: "expedientes", completeHistoricalEvaluation: "expedientes", reviewCase: "analisis", updateStatus: "analisis", saveSettings: "riesgo", deleteCriterion: "riesgo", importLocal: "expedientes" };
     if (!required[action]) return json({ error: "Operaci\xF3n desconocida." }, 400);
     requireModule(user, required[action], true);
     if (action === "importLocal") {
@@ -913,6 +937,7 @@ async function POST(req) {
     }
     if (action === "saveOperationTypes") {
       const input2 = z4.object({ version: z4.string(), types: z4.array(z4.object({ code: z4.string().regex(/^[A-Z][A-Z0-9_]{1,79}$/), name: z4.string().trim().min(2).max(120), active: z4.boolean(), uifScope: z4.enum(["PISO", "SIEMPRE", "NO_APLICA"]), productCriterionId: z4.string().optional() })).min(1).max(100) }).parse(payload);
+      if (new Set(input2.types.map((t) => normalizeText(t.name))).size !== input2.types.length) return json({ error: "Los nombres de los tipos deben ser \xFAnicos para evitar importaciones ambiguas." }, 400);
       if (new Set(input2.types.map((t) => t.code)).size !== input2.types.length) return json({ error: "Hay c\xF3digos de operaci\xF3n repetidos." }, 400);
       if (!input2.types.some((t) => t.active)) return json({ error: "Debe quedar al menos un tipo activo." }, 400);
       const [org] = await db.select().from(organizationSettings).where(eq2(organizationSettings.ownerId, ownerId));
@@ -978,18 +1003,23 @@ async function POST(req) {
         if (!valid || bytes.length > 2e5) return json({ error: "El archivo del logo no es v\xE1lido o supera 200 KB." }, 400);
       }
       const [previousOrg] = await db.select().from(organizationSettings).where(eq2(organizationSettings.ownerId, ownerId));
+      if (payload.expectedOrganization) {
+        const expected = payload.expectedOrganization, current = orgForComparison(previousOrg?.organization || DEFAULT_ORGANIZATION);
+        if (stable(orgForComparison(expected)) !== stable(current)) return json({ error: "Los datos de la organizaci\xF3n cambiaron. Actualiz\xE1 la p\xE1gina antes de guardar." }, 409);
+      }
       const savedOrganization = { ...organization, operationTypes: operationTypesFor(previousOrg?.organization) };
       await db.insert(organizationSettings).values({ ownerId, organization: savedOrganization, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }).onConflictDoUpdate({ target: organizationSettings.ownerId, set: { organization: savedOrganization, updatedAt: (/* @__PURE__ */ new Date()).toISOString() } });
       return json({ organization: savedOrganization });
     }
     if (action === "saveSubject") {
       const input2 = subjectSchema.parse(payload), documentKey = input2.taxId.replace(/\D/g, ""), now = (/* @__PURE__ */ new Date()).toISOString();
-      const [old] = await db.select().from(subjects).where(and2(eq2(subjects.ownerId, ownerId), eq2(subjects.documentKey, documentKey)));
-      if (old && old.id !== input2.id) return json({ error: "Ya existe un sujeto con ese documento. Seleccion\xE1 su ficha para editarlo." }, 409);
-      if (input2.id && (!old || old.id !== input2.id)) return json({ error: "No se encontr\xF3 la ficha o cambi\xF3 su documento." }, 409);
+      const [duplicate] = await db.select().from(subjects).where(and2(eq2(subjects.ownerId, ownerId), eq2(subjects.documentKey, documentKey)));
+      const [old] = input2.id ? await db.select().from(subjects).where(and2(eq2(subjects.ownerId, ownerId), eq2(subjects.id, input2.id))) : [duplicate];
+      if (duplicate && duplicate.id !== input2.id) return json({ error: "Ya existe un sujeto con ese documento. Seleccion\xE1 su ficha para editarlo." }, 409);
+      if (input2.id && !old) return json({ error: "No se encontr\xF3 la ficha del sujeto." }, 404);
       if (old && input2.updatedAt && old.updatedAt !== input2.updatedAt) return json({ error: "La ficha cambi\xF3. Actualizala antes de editarla." }, 409);
       const config = await configFor(ownerId);
-      if (input2.clientCriteriaIds.some((id) => !config.criteria.some((c) => c.id === id && c.active && c.category === "CLIENTE"))) return json({ error: "Revis\xE1 los criterios personales de la ficha." }, 400);
+      if (input2.clientCriteriaIds.some((id) => !config.criteria.some((c) => c.id === id && c.active && !c.deletedAt && c.category === "CLIENTE"))) return json({ error: "Revis\xE1 los criterios personales de la ficha." }, 400);
       const subject = { ...input2, id: old?.id || crypto.randomUUID(), ownerId, documentKey, pepDetails: input2.pepDetails || "", createdAt: old?.createdAt || now, updatedAt: old ? new Date(Math.max(Date.now(), Date.parse(old.updatedAt) + 1)).toISOString() : now };
       try {
         if (old) {
@@ -1039,21 +1069,60 @@ async function POST(req) {
       }
       return json({ record, subject: person }, 201);
     }
+    if (action === "completeHistoricalEvaluation") {
+      const input2 = z4.object({ id: z4.string().min(1).max(100), version: z4.number().int().nonnegative(), subjectId: z4.string().min(1).max(100), record: z4.record(z4.string(), z4.unknown()) }).parse(payload);
+      const [row] = await db.select().from(evaluations).where(and2(eq2(evaluations.ownerId, ownerId), eq2(evaluations.id, input2.id)));
+      if (!row) return json({ error: "No se encontr\xF3 el expediente." }, 404);
+      if (!row.record.evaluationPending || (row.record.analysisVersion || 0) !== input2.version) return json({ error: "El expediente cambi\xF3 o ya fue evaluado. Actualiz\xE1 la p\xE1gina." }, 409);
+      if (["JUSTIFICADO", "REPORTE_ROS"].includes(row.record.status)) return json({ error: "El expediente est\xE1 concluido y conserva su evaluaci\xF3n hist\xF3rica." }, 409);
+      const [person] = await db.select().from(subjects).where(and2(eq2(subjects.ownerId, ownerId), eq2(subjects.id, input2.subjectId)));
+      if (!person) return json({ error: "Seleccion\xE1 una ficha de sujeto registrada." }, 404);
+      if (row.subjectId ? row.subjectId !== person.id : normalizeText(row.record.subjectName) !== normalizeText(person.subjectName)) return json({ error: "El sujeto no coincide con el hist\xF3rico. Revis\xE1 su identificaci\xF3n." }, 409);
+      const operation = operationSchema.parse({ ...input2.record, pepStatus: person.pepStatus, pepDetails: person.pepDetails, activityAtOperation: person.activity });
+      if (input2.record.subjectUpdatedAt !== person.updatedAt) return json({ error: "La ficha cambi\xF3. Volv\xE9 a seleccionarla y confirm\xE1 su condici\xF3n." }, 409);
+      if (operation.amountARS !== row.record.amountARS || operation.operationAt !== row.record.operationAt || operation.channelName !== row.record.channelName) return json({ error: "El importe, la fecha y la sala deben conservar los datos originales del hist\xF3rico." }, 409);
+      const config = await configFor(ownerId);
+      const [org] = await db.select().from(organizationSettings).where(eq2(organizationSettings.ownerId, ownerId));
+      const type = operationTypesFor(org?.organization).find((t) => t.code === operation.operationType && t.active);
+      if (!type) return json({ error: "Seleccion\xE1 un tipo de operaci\xF3n activo." }, 409);
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      let calculated;
+      try {
+        calculated = buildEvaluationRecord(operation, person, config, type, { id: row.id, now, evaluator: user.email, role: user.role, fingerprint: row.record.requestFingerprint || "" });
+      } catch (e) {
+        return json({ error: e.message }, 409);
+      }
+      const record = { ...row.record, ...calculated, dossierNumber: row.record.dossierNumber, timestamp: row.record.timestamp, status: row.record.status, analysis: row.record.analysis, analysisHistory: row.record.analysisHistory, analysisVersion: input2.version + 1, evaluationPending: false, evaluationCompletedAt: now };
+      const changed = await db.update(evaluations).set({ subjectId: person.id, record }).where(and2(eq2(evaluations.ownerId, ownerId), eq2(evaluations.id, row.id), eq2(evaluations.record, row.record))).returning({ id: evaluations.id });
+      if (!changed.length) return json({ error: "Otro cambio se guard\xF3 primero. Actualiz\xE1 el expediente." }, 409);
+      return json({ record, subject: person });
+    }
     if (action === "reviewCase") {
       const input2 = z4.object({ id: z4.string(), version: z4.number().int().nonnegative(), action: z4.enum(["SEGUIMIENTO", "CERRAR_JUSTIFICADA", "DETERMINAR_SOSPECHOSA", "REGISTRAR_ROS"]), classification: z4.enum(["EN_REVISION", "SIN_INUSUALIDAD", "INUSUAL", "SOSPECHOSA"]), alertOrigin: z4.string().trim().min(2).max(1e3), unusualType: z4.string().max(4e3), profileSummary: z4.string().max(4e3).default(""), documentationRequested: z4.string().max(4e3), documentationReviewed: z4.string().max(4e3), fundsAssessment: z4.string().max(4e3).default(""), beneficialOwner: z4.string().max(2e3), reasoning: z4.string().trim().min(10).max(6e3), rosReference: z4.string().max(500), rosSubmittedAt: z4.string().max(50) }).parse(payload);
       const [row] = await db.select().from(evaluations).where(and2(eq2(evaluations.ownerId, ownerId), eq2(evaluations.id, input2.id)));
       if (!row) return json({ error: "No se encontr\xF3 el expediente." }, 404);
       if ((row.record.analysisVersion || 0) !== input2.version) return json({ error: "El expediente cambi\xF3. Actualiz\xE1 la p\xE1gina antes de guardar el an\xE1lisis." }, 409);
+      if (input2.action === "SEGUIMIENTO" && row.record.status === "JUSTIFICADO" && input2.classification !== row.record.analysis?.classification) return json({ error: "El seguimiento conserva la clasificaci\xF3n del cierre. Para cambiar la decisi\xF3n registr\xE1 un an\xE1lisis espec\xEDfico." }, 400);
+      if (input2.action === "CERRAR_JUSTIFICADA" && row.record.evaluationPending) return json({ error: "Complet\xE1 la evaluaci\xF3n de riesgo del hist\xF3rico antes de justificar el expediente." }, 409);
+      if (input2.action === "SEGUIMIENTO" && row.record.analysis?.classification === "SOSPECHOSA" && input2.classification !== "SOSPECHOSA") return json({ error: "Una sospecha requiere una decisi\xF3n fundamentada; no se retira mediante seguimiento." }, 400);
       if (input2.action === "SEGUIMIENTO" && input2.classification === "SOSPECHOSA" && row.record.analysis?.classification !== "SOSPECHOSA") return json({ error: "Us\xE1 la decisi\xF3n Determinar sospechosa para registrar esa conclusi\xF3n." }, 400);
       if ((input2.classification === "INUSUAL" || input2.action === "DETERMINAR_SOSPECHOSA") && input2.unusualType.trim().length < 10) return json({ error: "Describ\xED la inusualidad detectada." }, 400);
       if (row.record.status === "REPORTE_ROS" && input2.action !== "SEGUIMIENTO") return json({ error: "El ROS ya est\xE1 registrado. Agreg\xE1 novedades mediante seguimiento, conservando la constancia." }, 400);
       if (input2.action === "CERRAR_JUSTIFICADA" && input2.classification === "INUSUAL" && !input2.documentationReviewed.trim()) return json({ error: "Registr\xE1 el sustento documental revisado para justificar la inusualidad." }, 400);
       if (input2.action === "CERRAR_JUSTIFICADA" && input2.classification === "EN_REVISION") return json({ error: "Complet\xE1 la clasificaci\xF3n antes de cerrar el an\xE1lisis." }, 400);
       if (input2.action === "CERRAR_JUSTIFICADA" && input2.classification === "SOSPECHOSA") return json({ error: "Revis\xE1 la clasificaci\xF3n antes de cerrar una operaci\xF3n como justificada." }, 400);
+      if (input2.action === "REGISTRAR_ROS") {
+        try {
+          const date = parseImportDate(input2.rosSubmittedAt.length === 10 ? input2.rosSubmittedAt + " 00:00" : input2.rosSubmittedAt);
+          if (row.record.operationAt && businessDate(date) < businessDate(row.record.operationAt)) return json({ error: "La presentaci\xF3n del ROS no puede ser anterior a la operaci\xF3n." }, 400);
+        } catch {
+          return json({ error: "Indic\xE1 una fecha de presentaci\xF3n v\xE1lida y no futura, en hora argentina." }, 400);
+        }
+      }
       if (input2.action === "REGISTRAR_ROS" && (row.record.analysis?.classification !== "SOSPECHOSA" || !input2.rosReference.trim() || !Number.isFinite(Date.parse(input2.rosSubmittedAt)))) return json({ error: "Primero document\xE1 la determinaci\xF3n de sospecha. Para registrar el ROS presentado, indic\xE1 su constancia y fecha." }, 400);
       if (input2.action === "REGISTRAR_ROS" && Date.parse(input2.rosSubmittedAt) > Date.now()) return json({ error: "La fecha de presentaci\xF3n no puede ser futura." }, 400);
       const review = { ...input2, profileSummary: row.record.analysis?.profileSummary || "", fundsAssessment: row.record.analysis?.fundsAssessment || "", classification: input2.action === "DETERMINAR_SOSPECHOSA" || input2.action === "REGISTRAR_ROS" || row.record.status === "REPORTE_ROS" ? "SOSPECHOSA" : input2.classification, rosReference: row.record.status === "REPORTE_ROS" ? row.record.analysis?.rosReference || input2.rosReference : input2.rosReference, rosSubmittedAt: row.record.status === "REPORTE_ROS" ? row.record.analysis?.rosSubmittedAt || input2.rosSubmittedAt : input2.rosSubmittedAt, analyst: req.headers.get("oai-authenticated-user-email") || "Usuario autenticado", reviewedAt: (/* @__PURE__ */ new Date()).toISOString() };
-      const record = { ...row.record, analysis: review, analysisHistory: [...row.record.analysisHistory || [], review], analysisVersion: input2.version + 1, status: row.record.status === "REPORTE_ROS" ? "REPORTE_ROS" : input2.action === "CERRAR_JUSTIFICADA" ? "JUSTIFICADO" : input2.action === "REGISTRAR_ROS" ? "REPORTE_ROS" : "EN_ANALISIS" };
+      const record = { ...row.record, analysis: review, analysisHistory: [...row.record.analysisHistory || [], review], analysisVersion: input2.version + 1, status: row.record.status === "REPORTE_ROS" ? "REPORTE_ROS" : row.record.status === "JUSTIFICADO" && input2.action === "SEGUIMIENTO" ? "JUSTIFICADO" : input2.action === "CERRAR_JUSTIFICADA" ? "JUSTIFICADO" : input2.action === "REGISTRAR_ROS" ? "REPORTE_ROS" : "EN_ANALISIS" };
       const updated = await db.update(evaluations).set({ record }).where(and2(eq2(evaluations.ownerId, ownerId), eq2(evaluations.id, input2.id), eq2(evaluations.record, row.record))).returning({ id: evaluations.id });
       if (!updated.length) return json({ error: "Otro cambio se guard\xF3 primero. Actualiz\xE1 el expediente." }, 409);
       return json({ record });
@@ -1062,10 +1131,12 @@ async function POST(req) {
       const input2 = z4.object({ id: z4.string(), status: z4.enum(statusValues) }).parse(payload);
       const [row] = await db.select().from(evaluations).where(and2(eq2(evaluations.ownerId, ownerId), eq2(evaluations.id, input2.id)));
       if (!row) return json({ error: "No se encontr\xF3 el expediente." }, 404);
+      if (row.record.analysis) return json({ error: "El expediente tiene un an\xE1lisis documentado. Registr\xE1 los cambios mediante seguimiento." }, 409);
       if (row.record.status === "JUSTIFICADO" || row.record.status === "REPORTE_ROS") return json({ error: "Los cambios de un expediente concluido requieren an\xE1lisis documentado." }, 409);
       if (input2.status === "JUSTIFICADO" || input2.status === "REPORTE_ROS") return json({ error: "El cierre y el registro de ROS requieren un an\xE1lisis fundamentado." }, 400);
       const record = { ...row.record, status: input2.status };
-      await db.update(evaluations).set({ record }).where(and2(eq2(evaluations.ownerId, ownerId), eq2(evaluations.id, input2.id)));
+      const changed = await db.update(evaluations).set({ record }).where(and2(eq2(evaluations.ownerId, ownerId), eq2(evaluations.id, input2.id), eq2(evaluations.record, row.record))).returning({ id: evaluations.id });
+      if (!changed.length) return json({ error: "El expediente cambi\xF3. Actualiz\xE1 antes de guardar." }, 409);
       return json({ record });
     }
     if (action === "deleteCriterion") {
@@ -1080,12 +1151,13 @@ async function POST(req) {
       return json(next);
     }
     if (action === "saveSettings") {
-      const config = z4.object({ criteria: z4.array(z4.object({ id: z4.string(), deletedAt: z4.string().optional(), deletedBy: z4.string().optional(), code: z4.string(), name: z4.string(), description: z4.string(), category: z4.enum(["CLIENTE", "PRODUCTO", "CANAL", "GEOGRAFIA"]), subgroup: z4.string(), score: z4.number().min(1).max(5), riskLevel: z4.enum(["BAJO", "MEDIO", "ALTO", "CRITICO"]), mitigationFactor: z4.number().min(0).max(1), active: z4.boolean(), regulatoryBase: z4.string(), lastUpdated: z4.string() })).max(1e3), factorWeights: z4.array(z4.object({ category: z4.enum(["CLIENTE", "PRODUCTO", "CANAL", "GEOGRAFIA"]), name: z4.string(), weightPercentage: z4.number().min(0).max(100), description: z4.string(), iconName: z4.string() })).length(4), thresholds: z4.array(z4.object({ id: z4.string(), code: z4.string(), title: z4.string(), description: z4.string(), amountARS: z4.number().finite().positive(), periodicity: z4.enum(["POR_OPERACION", "MENSUAL_ACUMULADO", "ANUAL"]), actionRequired: z4.string(), regulationSource: z4.string(), lastUpdated: z4.string() })).max(100) }).parse(payload);
+      const config = z4.object({ criteria: z4.array(z4.object({ id: z4.string().trim().min(1).max(100), deletedAt: z4.string().optional(), deletedBy: z4.string().optional(), code: z4.string().trim().min(1).max(80), name: z4.string().trim().min(2).max(200), description: z4.string(), category: z4.enum(["CLIENTE", "PRODUCTO", "CANAL", "GEOGRAFIA"]), subgroup: z4.string(), score: z4.number().min(1).max(5), riskLevel: z4.enum(["BAJO", "MEDIO", "ALTO", "CRITICO"]), mitigationFactor: z4.number().min(0).max(1), active: z4.boolean(), regulatoryBase: z4.string(), lastUpdated: z4.string() })).max(1e3), factorWeights: z4.array(z4.object({ category: z4.enum(["CLIENTE", "PRODUCTO", "CANAL", "GEOGRAFIA"]), name: z4.string(), weightPercentage: z4.number().min(0).max(100), description: z4.string(), iconName: z4.string() })).length(4), thresholds: z4.array(z4.object({ id: z4.string(), code: z4.string(), title: z4.string(), description: z4.string(), amountARS: z4.number().finite().positive(), periodicity: z4.enum(["POR_OPERACION", "MENSUAL_ACUMULADO", "ANUAL"]), actionRequired: z4.string(), regulationSource: z4.string(), lastUpdated: z4.string() })).max(100) }).parse(payload);
       if (config.thresholds.length !== 1 || config.thresholds[0].code !== UIF_FLOOR_CODE || config.thresholds[0].periodicity !== "POR_OPERACION") return json({ error: "Configur\xE1 \xFAnicamente el piso UIF por operaci\xF3n." }, 400);
       if (Math.abs(config.factorWeights.reduce((sum, w) => sum + w.weightPercentage, 0) - 100) > 0.01) return json({ error: "Las ponderaciones deben sumar 100%." }, 400);
       const unique = (v) => new Set(v).size === v.length;
-      if (!unique(config.criteria.map((c) => c.id)) || !unique(config.criteria.map((c) => c.code)) || !unique(config.factorWeights.map((w) => w.category)) || !unique(config.thresholds.map((t) => t.id)) || !unique(config.thresholds.map((t) => t.code))) return json({ error: "La configuraci\xF3n contiene c\xF3digos o factores duplicados." }, 400);
+      if (!unique(config.criteria.map((c) => c.id)) || !unique(config.criteria.map((c) => normalizeText(c.code))) || !unique(config.factorWeights.map((w) => w.category)) || !unique(config.thresholds.map((t) => t.id)) || !unique(config.thresholds.map((t) => t.code))) return json({ error: "La configuraci\xF3n contiene c\xF3digos o factores duplicados." }, 400);
       const previous = await configFor(ownerId);
+      if (payload.expectedConfig && stable(payload.expectedConfig) !== stable({ criteria: previous.criteria, factorWeights: previous.factorWeights, thresholds: previous.thresholds })) return json({ error: "La configuraci\xF3n cambi\xF3. Actualiz\xE1 la p\xE1gina para conservar los cambios de otros usuarios." }, 409);
       const removed = previous.criteria.filter((c) => !c.deletedAt && !config.criteria.some((n) => n.id === c.id));
       if (removed.length && user.role !== "SUPERADMIN") throw Error("FORBIDDEN");
       if (config.criteria.some((c) => c.deletedAt && !previous.criteria.find((p) => p.id === c.id)?.deletedAt)) return json({ error: "Us\xE1 la opci\xF3n Eliminar para retirar un par\xE1metro." }, 400);

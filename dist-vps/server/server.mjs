@@ -2,7 +2,7 @@ import {
   MODULES,
   access,
   route_exports
-} from "./chunk-LMQ3SNZY.mjs";
+} from "./chunk-F2N2B65O.mjs";
 import {
   __export,
   appUsers,
@@ -90,13 +90,14 @@ var escape = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "
 var reply = (b, s = 200, h = {}) => new Response(b, { status: s, headers: h });
 var redirect = (path, h = {}) => reply(null, 303, { Location: base + path, ...h });
 async function readBody(req) {
-  let n = 0, body = "";
+  let n = 0;
+  const chunks = [];
   for await (const c of req) {
     n += c.length;
     if (n > 1048576) throw reply("Solicitud demasiado grande.", 413);
-    body += c.toString();
+    chunks.push(c);
   }
-  return body;
+  return Buffer.concat(chunks).toString("utf8");
 }
 function login(message = "") {
   return reply(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GesPLAFT \xB7 Ingresar</title><style>body{background:#143b46;color:#193d47;font-family:system-ui;margin:0;display:grid;place-items:center;min-height:100vh}main{margin:20px;max-width:380px;padding:32px;background:white;border-radius:14px}label{display:block;margin:20px 0}input{display:block;width:100%;box-sizing:border-box;padding:12px;margin-top:7px;border:1px solid #b9c9ce;border-radius:6px}button{padding:12px 20px;width:100%;background:#176d70;color:white;border:0;border-radius:6px;font-size:16px}small{color:#6b7980}</style><main><small>SIGXIA \xB7 DEMO PRIVADA</small><h1>GesPLAFT</h1><p>Ingres\xE1 con una cuenta habilitada.</p>${message ? `<p role="alert">${escape(message)}</p>` : ""}<form method="post" action="${base}/auth/login"><label>Correo electr\xF3nico<input required name="email" type="email" autocomplete="username" maxlength="254"></label><label>Contrase\xF1a<input required name="password" type="password" autocomplete="current-password" maxlength="256"></label><button>Ingresar</button></form><p><small>Para acceder o restablecer tu clave, contact\xE1 al administrador.</small></p></main></html>`, 200, { "Content-Type": "text/html; charset=utf-8" });
@@ -122,7 +123,7 @@ async function route(req) {
   if (req.method === "POST" && req.headers.origin !== origin) return reply("Origen no autorizado.", 403);
   if (path === base + "/auth/login" && req.method === "POST") {
     const body = new URLSearchParams(await readBody(req)), email = (body.get("email") || "").trim().toLowerCase(), password = body.get("password") || "";
-    const local = req.socket.remoteAddress || "unknown", ip = process.env.TRUST_PROXY === "1" && ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(local) ? String(req.headers["x-forwarded-for"] || local).split(",")[0].trim() : local;
+    const local = req.socket.remoteAddress || "unknown", ip = process.env.TRUST_PROXY === "1" && ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(local) ? String(req.headers["x-forwarded-for"] || local).split(",").at(-1).trim() : local;
     const keys = [tokenHash("ip:" + ip), tokenHash("account:" + email)];
     for (const key of keys) {
       const [a] = await sqlQuery("insert into login_attempts(attempt_key,failures,reset_at) values($1,1,now()+interval '15 minutes') on conflict(attempt_key) do update set failures=case when login_attempts.reset_at<now() then 1 else login_attempts.failures+1 end,reset_at=case when login_attempts.reset_at<now() then now()+interval '15 minutes' else login_attempts.reset_at end returning failures", [key]);
@@ -154,6 +155,7 @@ async function route(req) {
       } catch {
         return Response.json({ error: "Contenido inv\xE1lido." }, { status: 400 });
       }
+      if (!input || typeof input !== "object" || typeof input.id !== "string" || typeof input.password !== "string") return Response.json({ error: "Indic\xE1 el usuario y la contrase\xF1a nueva." }, { status: 400 });
       const [target] = await sqlQuery("select id from app_users where id=$1 and owner_id=$2", [input.id, user.owner_id]);
       if (!target) return Response.json({ error: "Usuario no encontrado." }, { status: 404 });
       let hash;

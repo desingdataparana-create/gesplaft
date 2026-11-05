@@ -99,7 +99,7 @@ export const NormativaMatrizView: React.FC<NormativaMatrizViewProps> = ({
   const criteriaPages=Math.max(1,Math.ceil(filteredCriteria.length/10)),currentCriteriaPage=Math.min(criteriaPage,criteriaPages);
   return (
     <div className="space-y-6 max-w-7xl mx-auto w-full">
-      <div className="page-heading"><div><h1>Configuración</h1><p>Criterios, piso UIF y matriz de evaluación.</p></div></div>
+      <div className="page-heading"><div><h1 className="icon-heading"><SlidersHorizontal aria-hidden="true"/>Configuración</h1><p>Criterios, piso UIF y matriz de evaluación.</p></div></div>
       <nav aria-label="Secciones de configuración" className="flex gap-5 border-b border-slate-200 overflow-x-auto">{([['CRITERIOS','Criterios'],['UMBRALES','Piso UIF'],['MATRIZ','Matriz']] as const).map(([id,label])=><button key={id} aria-current={activeTab===id?'page':undefined} onClick={()=>setActiveTab(id)} className={`text-sm py-3 whitespace-nowrap border-b-2 ${activeTab===id?'border-teal-700 text-teal-700 font-medium':'border-transparent text-slate-400'}`}>{label}</button>)}</nav>
 
       {/* SUB-VIEW 1: UMBRALES REGULATORIOS UIF */}

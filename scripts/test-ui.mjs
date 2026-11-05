@@ -5,7 +5,7 @@ import {unlink} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const file=new URL('../.audit-ui.mjs',import.meta.url);
 try{
- await build({stdin:{contents:`export {RiskEvaluationModal} from './src/components/RiskEvaluationModal';export {NormativaMatrizView} from './src/components/NormativaMatrizView';export {SystemSettingsView} from './src/components/SystemSettingsView';export * from './src/data/initialRiskData';export {DEFAULT_ORGANIZATION} from './src/data/organization';export {DEFAULT_OPERATION_TYPES} from './src/utils/operationTypes';`,resolveDir:process.cwd()},outfile:file.pathname,bundle:true,format:'esm',platform:'node',packages:'external'});
+ await build({stdin:{contents:`export {DashboardView} from './src/components/DashboardView';export {RiskEvaluationModal} from './src/components/RiskEvaluationModal';export {NormativaMatrizView} from './src/components/NormativaMatrizView';export {SystemSettingsView} from './src/components/SystemSettingsView';export * from './src/data/initialRiskData';export {DEFAULT_ORGANIZATION} from './src/data/organization';export {DEFAULT_OPERATION_TYPES} from './src/utils/operationTypes';`,resolveDir:process.cwd()},outfile:file.pathname,bundle:true,format:'esm',platform:'node',packages:'external'});
  const x=await import(file.href),noop=()=>{},config={criteria:x.INITIAL_RISK_CRITERIA,factorWeights:x.INITIAL_FACTOR_WEIGHTS,thresholds:x.INITIAL_REGULATORY_THRESHOLDS};
  const person={id:'person',updatedAt:'2026-11-01T12:00:00Z',subjectName:'Persona visual QA',taxId:'00000031',subjectType:'PERSONA_FISICA',activity:'Empleado',pepStatus:false,clientCriteriaIds:['cli-01']};
  const original={id:'original',dossierNumber:'HIST-QA',operationAt:'2026-10-01T03:00:00.000Z',amountARS:1250.5,channelName:'Sala QA',locationDepartment:'Sin informar',operationType:'COBRO_PREMIO',notes:'Datos del archivo de origen'};
@@ -16,5 +16,8 @@ try{
  assert.match(settings,/Plantilla CSV con ejemplo/);assert.match(settings,/fieldset disabled=""/);assert.match(settings,/Para importar necesitás permiso/);
  const risk=renderToStaticMarkup(React.createElement(x.NormativaMatrizView,{...config,canEdit:false,onUpdateThresholds:noop,onUpdateCriteria:noop,onUpdateWeights:noop,onOpenAddModal:noop,onEditCriterion:noop,onResetDefaults:noop}));
  assert.match(risk,/Parámetros|Configuración/);assert.match(risk,/Piso UIF/);assert.match(risk,/disabled=""/);
+ const emptyDashboard={subjects:0,total:0,pending:0,inAnalysis:0,closed:0,ros:0,pendingEvaluation:0,risk:{BAJO:0,MEDIO:0,ALTO:0,CRITICO:0}};
+ const empty=renderToStaticMarkup(React.createElement(x.DashboardView,{data:emptyDashboard,onNavigate:noop,canOpen:true,records:[]}));assert.doesNotMatch(empty,/NaN|Infinity/);assert.match(empty,/Todavía no hay evaluaciones completas/);assert.match(empty,/No hay operaciones en este período/);
+ const sample=renderToStaticMarkup(React.createElement(x.DashboardView,{data:{...emptyDashboard,total:5,pending:3,closed:1,ros:1,pendingEvaluation:2,risk:{BAJO:1,MEDIO:1,ALTO:1,CRITICO:0}},onNavigate:noop,canOpen:false}));assert.match(sample,/Riesgo de 3 evaluaciones completas/);assert.match(sample,/2 operaciones pendientes de evaluar/);assert.doesNotMatch(sample,/Actividad de los últimos seis meses/);assert.doesNotMatch(sample,/NaN|Infinity/);
  console.log('PASS: renderizado de formularios históricos con datos iniciales, campos originales protegidos y consulta sin controles de escritura. No sustituye la prueba de interacción en navegador.');
 }finally{await unlink(file).catch(()=>{});}

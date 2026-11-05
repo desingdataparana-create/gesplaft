@@ -6,7 +6,7 @@ import {join} from 'node:path';
 const dir=await mkdtemp(join(tmpdir(),'gesplaft-unit-'));
 try {
   const file=join(dir,'logic.mjs');
-  await build({stdin:{contents:`export * from './src/utils/calculateRisk';export * from './src/utils/riskConfiguration';export * from './src/utils/exportUtils';export * from './src/data/initialRiskData';export * from './src/access';export * from './src/utils/operationImport';export * from './src/utils/operationTypes';export {businessDateTimeInput,businessPeriod} from './src/utils/businessTime';`,resolveDir:process.cwd()},outfile:file,bundle:true,format:'esm',platform:'node'});
+  await build({stdin:{contents:`export * from './src/utils/dashboardCharts';export * from './src/utils/calculateRisk';export * from './src/utils/riskConfiguration';export * from './src/utils/exportUtils';export * from './src/data/initialRiskData';export * from './src/access';export * from './src/utils/operationImport';export * from './src/utils/operationTypes';export {businessDateTimeInput,businessPeriod} from './src/utils/businessTime';`,resolveDir:process.cwd()},outfile:file,bundle:true,format:'esm',platform:'node'});
   const x=await import(file),ids=['cli-01','prod-01','can-01','geo-01'];
   const floor={...x.INITIAL_REGULATORY_THRESHOLDS[0],amountARS:100};
   const run=(amount,ts=[floor],context={})=>x.calculateRisk(x.INITIAL_RISK_CRITERIA,x.INITIAL_FACTOR_WEIGHTS,ids,false,amount,ts,context);
@@ -69,5 +69,9 @@ try {
   assert.equal(exported[1][15],'PENDIENTE');assert.equal(exported[1][16],'PENDIENTE');
   const xml=x.generateRecordsXML([pending],[],{title:'QA',generatedAt:'QA',generatedBy:'QA',totalRecords:1,totalAmountARS:600});
   assert.match(xml,/<evaluacionPendiente>true<\/evaluacionPendiente>/);assert.match(xml,/<requiereDJOF>PENDIENTE<\/requiereDJOF>/);
+  const activity=x.monthlyActivity([{operationAt:'2026-11-01T01:00:00Z',timestamp:'2026-11-03T12:00:00Z',amountARS:10.10},{operationAt:'2026-10-30T15:00:00Z',timestamp:'2026-11-03T12:00:00Z',amountARS:20.20},{operationAt:'2026-03-01T15:00:00Z',timestamp:'2026-11-03T12:00:00Z',amountARS:999}],new Date('2026-11-05T15:00:00Z'));
+  assert.equal(activity.length,6);assert.equal(activity[0].key,'2026-06');assert.equal(activity[5].key,'2026-11');assert.equal(activity[4].count,2,'monthly chart uses the Argentine operation date');assert.equal(activity[4].amount,30.30);assert.equal(activity[5].count,0,'import timestamp does not change the month');
+  assert.equal(x.monthlyActivity([],new Date('2027-01-01T01:00:00Z')).at(-1).key,'2026-12','current chart period follows Argentina at year boundary');
+  assert.equal(x.monthlyActivity([],new Date('2026-11-05T15:00:00Z')).every(m=>m.amount===0&&m.count===0),true);
   console.log('PASS: piso UIF, límites decimales, configuración anterior, cuatro factores, PEP, fechas, CSV y permisos.');
 } finally {await rm(dir,{recursive:true,force:true});}

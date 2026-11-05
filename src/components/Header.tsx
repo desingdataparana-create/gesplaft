@@ -3,7 +3,7 @@ import type {OrganizationSettings} from '../types';
 import type {ThemeMode} from './SystemSettingsView';
 import React from 'react';
 import {can,ROLE_NAMES,type AccessUser} from '../access';
-import {FileText,Users,SlidersHorizontal,Download,Plus,ShieldCheck,Settings,Moon,Sun,LockKeyhole} from 'lucide-react';
+import {ChartNoAxesCombined,FileText,Users,SlidersHorizontal,Download,Plus,ShieldCheck,Settings,Moon,Sun,LockKeyhole} from 'lucide-react';
 interface HeaderProps {
  user:AccessUser|null;
  organization:OrganizationSettings;theme:ThemeMode;onToggleTheme:()=>void;
@@ -13,7 +13,7 @@ interface HeaderProps {
  status?:'loading'|'saving'|'connected'|'error';ready?:boolean;
 }
 export function Header(p:HeaderProps){
- const items=[{id:'dashboard',label:'Dashboard',icon:ShieldCheck},{id:'monitoreo',label:'Expedientes',icon:FileText},{id:'sujetos',label:'Sujetos',icon:Users},{id:'normativa',label:'Parámetros de riesgo',icon:SlidersHorizontal},{id:'ajustes',label:'Ajustes',icon:Settings},{id:'usuarios',label:'Usuarios',icon:Users}].filter(i=>i.id==='usuarios'?p.user?.role==='SUPERADMIN':can(p.user,({monitoreo:'expedientes',normativa:'riesgo',dashboard:'dashboard',sujetos:'sujetos',ajustes:'ajustes'} as const)[i.id as 'monitoreo']));
+ const items=[{id:'dashboard',label:'Dashboard',icon:ChartNoAxesCombined},{id:'monitoreo',label:'Expedientes',icon:FileText},{id:'sujetos',label:'Sujetos',icon:Users},{id:'normativa',label:'Parámetros de riesgo',icon:SlidersHorizontal},{id:'ajustes',label:'Ajustes',icon:Settings},{id:'usuarios',label:'Usuarios',icon:Users}].filter(i=>i.id==='usuarios'?p.user?.role==='SUPERADMIN':can(p.user,({monitoreo:'expedientes',normativa:'riesgo',dashboard:'dashboard',sujetos:'sujetos',ajustes:'ajustes'} as const)[i.id as 'monitoreo']));
  const status=p.status==='loading'?'Conectando':p.status==='saving'?'Guardando':p.status==='error'?'Revisar aviso':'Conectado';
  return <>
  <a className="skip-link" href="#contenido">Ir al contenido</a>

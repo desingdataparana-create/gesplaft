@@ -264,7 +264,7 @@ export default function App() {
       {loading && <p className="p-8 text-slate-500" role="status">Cargando datos…</p>}
       {/* Main Content View with Clean Layout */}
       <main data-section={currentTab} id="contenido" className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-        {loaded&&!loading&&currentTab==='dashboard'&&dashboard&&<DashboardView data={dashboard} onNavigate={handleTabChange} canOpen={allow('expedientes')}/>}
+        {loaded&&!loading&&currentTab==='dashboard'&&dashboard&&<DashboardView records={records} data={dashboard} onNavigate={handleTabChange} canOpen={allow('expedientes')}/>}
         {loaded&&!loading&&currentTab==='usuarios'&&user?.role==='SUPERADMIN'&&<UsersView/>}
         {loaded&&!loading&&!permitted&&<p>No tenés módulos asignados. Consultá al superadministrador.</p>}
         {loaded && !loading && allow('expedientes') && currentTab === 'monitoreo' && (

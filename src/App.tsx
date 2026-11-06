@@ -293,7 +293,7 @@ export default function App() {
           />
         )}
 
-        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset className="min-w-0" disabled={!allow('ajustes',true)}><SystemSettingsView key={loaded?'loaded':'initial'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}}/></fieldset>}
+        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset className="min-w-0" disabled={!allow('ajustes',true)}><SystemSettingsView key={loaded?'loaded':'initial'} canBackup={user?.role==='SUPERADMIN'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}}/></fieldset>}
         {loaded && !loading && currentTab==='sujetos' && allow('sujetos') && <SubjectsView canEdit={allow('sujetos',true)} canEvaluate={allow('expedientes',true)} criteria={criteria} subjects={subjects} records={records} onSave={handleSaveSubject} onEvaluate={handleOpenNewEvaluationModal} onViewDossier={setSelectedDossier}/>}
 
         {loaded && !loading && allow('riesgo') && (currentTab === 'normativa' || currentTab === 'parametros' || currentTab === 'matriz' || currentTab === 'umbrales') && (

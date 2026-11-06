@@ -1,9 +1,10 @@
 import React,{useState} from 'react';
 import {Building2,Upload,Trash2,Sun,Moon,Monitor,CheckCircle2,Save,Image} from 'lucide-react';
 import type {OrganizationSettings} from '../types';
+import {BackupCard} from './BackupCard';
 export type ThemeMode='light'|'dark'|'system';
-interface Props{organization:OrganizationSettings;onSave:(data:OrganizationSettings)=>Promise<void>;theme:ThemeMode;onThemeChange:(mode:ThemeMode)=>void;ready:boolean}
-export function SystemSettingsView({organization,onSave,theme,onThemeChange,ready}:Props){
+interface Props{organization:OrganizationSettings;onSave:(data:OrganizationSettings)=>Promise<void>;theme:ThemeMode;onThemeChange:(mode:ThemeMode)=>void;ready:boolean;canBackup?:boolean}
+export function SystemSettingsView({organization,onSave,theme,onThemeChange,ready,canBackup}:Props){
  const [form,setForm]=useState(organization),[busy,setBusy]=useState(false),[processing,setProcessing]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false);
  const change=(key:keyof OrganizationSettings,value:string)=>{setForm(p=>({...p,[key]:value}));setSaved(false)};
  const upload=async(file?:File)=>{if(!file)return;setError('');setSaved(false);setProcessing(true);try{
@@ -20,5 +21,6 @@ export function SystemSettingsView({organization,onSave,theme,onThemeChange,read
    {error&&<p role="alert" className="p-3 rounded-lg bg-rose-50 text-rose-800 text-sm">{error}</p>}{saved&&<p role="status" className="flex items-center gap-2 text-sm text-emerald-700"><CheckCircle2 size={17}/>Los ajustes se guardaron.</p>}
    <footer className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100"><p className="text-xs text-slate-500">Los datos se guardan en la base de datos.</p><button className="button-primary" disabled={!ready||busy||processing}><Save size={15}/>{busy?'Guardando…':'Guardar ajustes'}</button></footer>
   </form>
+  {canBackup&&<BackupCard/>}
  </div>;
 }

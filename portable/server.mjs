@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {randomBytes} from 'node:crypto';
 import * as dataRoutes from '../app/api/data/route';
 import * as userRoutes from '../app/api/users/route';
+import * as backupRoutes from '../app/api/backup/route';
 import {sqlQuery,withWriteTransaction,closeDb} from './db';
 import {hashPassword,verifyPassword,tokenHash} from './auth.mjs';
 const port=Number(process.env.PORT||8094),base='/gesplaft',origin=process.env.PUBLIC_ORIGIN;
@@ -41,9 +42,9 @@ async function route(req){const url=new URL(req.url,origin),path=url.pathname;if
    return withWriteTransaction(async()=>{await sqlQuery('insert into credentials(user_id,password_hash) values($1,$2) on conflict(user_id) do update set password_hash=excluded.password_hash,updated_at=now()',[target.id,hash]);await sqlQuery('delete from sessions where user_id=$1',[target.id]);await sqlQuery('insert into audit_log(user_id,email,event,detail,ip) values($1,$2,$3,$4,$5)',[user.id,user.email,'clave_asignada','usuario '+target.id,clientIp(req).slice(0,64)]);return Response.json({ok:true});});
   }
   if(path===base+'/api/audit'&&req.method==='GET'){if(user.role!=='SUPERADMIN')return Response.json({error:'Acceso no autorizado.'},{status:403});const limit=Math.min(Math.max(Number(url.searchParams.get('limit'))||200,1),1000);return Response.json({events:await sqlQuery('select a.at,a.email,a.event,a.detail,a.ip from audit_log a where a.user_id is null or a.user_id in (select id from app_users where owner_id=$1) order by a.id desc limit $2',[user.owner_id,limit])});}
-  const routes=path===base+'/api/data'?dataRoutes:path===base+'/api/users'?userRoutes:null;if(!routes||!['GET','POST'].includes(req.method))return reply('',404);
+  const routes=path===base+'/api/data'?dataRoutes:path===base+'/api/users'?userRoutes:path===base+'/api/backup'?backupRoutes:null;if(!routes||!['GET','POST'].includes(req.method)||typeof routes[req.method]!=='function')return reply('',404);
   const headers=new Headers({'oai-authenticated-user-id':user.id,'oai-authenticated-user-email':user.email});if(req.method==='POST'){headers.set('Content-Type','application/json');headers.set('Origin',origin);}
-  const rawBody=req.method==='POST'?await readBody(req):undefined,kind=path===base+'/api/users'?'usuarios':'datos';let action='';if(rawBody){try{action=String(JSON.parse(rawBody).action||'').replace(/[^\w-]/g,'').slice(0,40);}catch{}}
+  const rawBody=req.method==='POST'?await readBody(req):undefined,kind=path===base+'/api/users'?'usuarios':path===base+'/api/backup'?'respaldo':'datos';let action='';if(rawBody){try{action=String(JSON.parse(rawBody).action||'').replace(/[^\w-]/g,'').slice(0,40);}catch{}}
   const request=new Request(origin+req.url,{method:req.method,headers,...(req.method==='POST'?{body:rawBody}:{})});const result=req.method==='POST'?await withWriteTransaction(()=>routes.POST(request)).catch(e=>{if(e instanceof Response)return e;throw e;}):await routes.GET(request);
   await audit(req,user,(req.method==='POST'?'escritura_':'lectura_')+kind,req.method==='POST'?(action||'usuario')+' → '+result.status:'');return result;
  }

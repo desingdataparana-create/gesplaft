@@ -6,7 +6,7 @@ import {
   RiskCriterion, 
   FactorWeight, 
   EvaluationRecord, 
-  RiskLevel, Subject
+  RiskLevel, Subject, SubjectDetails, PaymentMethod
 } from '../types';
 import { 
   X,
@@ -40,6 +40,7 @@ interface RiskEvaluationModalProps {
   initialSubjectData?: Partial<Subject> | null;
 }
 
+const DEPARTMENTS:[string,string][]=[['Paraná','Paraná (capital)'],['Concordia','Concordia (frontera)'],['Gualeguaychú','Gualeguaychú (frontera)'],['Colón','Colón (frontera)'],['Uruguay','Concepción del Uruguay'],['Victoria','Victoria'],['Federación','Federación'],['La Paz','La Paz'],['Villaguay','Villaguay'],['Gualeguay','Gualeguay']];
 export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   thresholds,records,
   canEditSubject=true,
@@ -66,7 +67,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   const selectSubject = (subject:Subject) => {
     setSelectedCriteriaIds(prev=>[...prev.filter(id=>criteria.find(c=>c.id===id)?.category!=='CLIENTE'),...(subject.clientCriteriaIds||[])]);
     
-    setSubjectUpdatedAt(subject.updatedAt);setSubjectId(subject.id);setSubjectName(subject.subjectName);setTaxId(subject.taxId);setSubjectType(subject.subjectType);setActivity(subject.activity);setIsPep(subject.pepStatus);setPepDetails(subject.pepDetails || '');setAddress(subject.address);setEmail(subject.email);setPhone(subject.phone);setValidationError('');
+    setSubjectDetails(subject.details);setSubjectUpdatedAt(subject.updatedAt);setSubjectId(subject.id);setSubjectName(subject.subjectName);setTaxId(subject.taxId);setSubjectType(subject.subjectType);setActivity(subject.activity);setIsPep(subject.pepStatus);setPepDetails(subject.pepDetails || '');setAddress(subject.address);setEmail(subject.email);setPhone(subject.phone);setValidationError('');
   };
 
   // Form State
@@ -80,6 +81,10 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   const [amountARS, setAmountARS] = useState<number>(0);
   const [department, setDepartment] = useState('');
   const [channelName, setChannelName] = useState('');
+  const [subjectDetails,setSubjectDetails]=useState<SubjectDetails|undefined>();
+  const noOp={game:'',modality:'',drawName:'',drawDate:'',agencyNumber:'',paymentMethod:'EFECTIVO' as PaymentMethod,issuingBank:'',chequeNumber:'',cbu:''};
+  const [op,setOp]=useState(noOp);
+  const setOpField=(k:keyof typeof noOp,v:string)=>setOp(prev=>({...prev,[k]:v}));
   const [notes, setNotes] = useState('');
 
   // Selected criterion IDs
@@ -104,7 +109,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     setIsPep(initialSubjectData?.pepStatus || false);
     setPepDetails(initialSubjectData?.pepDetails || '');
     setActivity(initialSubjectData?.activity || '');
-    setOperationType('COBRO_PREMIO'); setAmountARS(0); setDepartment('');
+    setOperationType('COBRO_PREMIO'); setAmountARS(0); setDepartment('');setOp(noOp);
     setChannelName(''); setNotes(''); setSelectedCriteriaIds(initialSubjectData?.clientCriteriaIds || []);
     setSavedRecord(null); setValidationError('');setStep(initialSubjectData?.id?2:1);
   };
@@ -114,7 +119,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     if(!savedRecord)return;
     setRequestId(crypto.randomUUID());
     setSubjectId(savedRecord.subjectId || '');
-    setAmountARS(0);setDepartment('');setChannelName('');setNotes('');setSelectedCriteriaIds(prev=>prev.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE'));
+    setAmountARS(0);setOp(noOp);setDepartment('');setChannelName('');setNotes('');setSelectedCriteriaIds(prev=>prev.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE'));
     setCriterionCategory('PRODUCTO');setOperationDate(currentLocalDate());setSavedRecord(null);setValidationError('');setStep(2);
   };
 
@@ -134,6 +139,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     return calculateRisk(criteria, factorWeights, selectedCriteriaIds, isPep, amountARS,thresholds,{operationAt:operationDate&&Number.isFinite(Date.parse(operationDate))?new Date(operationDate).toISOString():undefined,subjectType,records:records.filter(r=>r.subjectId===subjectId)});
   }, [criteria, factorWeights, selectedCriteriaIds, isPep, amountARS,thresholds,operationDate,subjectType,records,subjectId]);
 
+  const paymentError=():string=>op.paymentMethod==='TRANSFERENCIA'&&(!op.issuingBank.trim()||!/^\d{22}$/.test(op.cbu.replace(/\s/g,'')))?'Para una transferencia indicá el banco emisor y el CBU de 22 dígitos.':'';
   const validateStep=(s:1|2):string=>{
     if(s===1){
       if(!subjectId)return 'Seleccioná un sujeto registrado o creá su ficha con «Nuevo sujeto».';
@@ -143,6 +149,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     }
     if(!operationDate || !Number.isFinite(new Date(operationDate).getTime()))return 'Indicá la fecha y hora de la operación.';
     if(!department.trim() || !channelName.trim() || !Number.isFinite(amountARS) || amountARS<=0)return 'Completá departamento, sala y un monto mayor a cero.';
+    if(paymentError())return paymentError();
     const has=(category:RiskCriterion['category'])=>selectedCriteriaIds.some(id=>criteria.find(c=>c.id===id)?.category===category);
     if(!has('PRODUCTO')||!has('CANAL')||!has('GEOGRAFIA'))return 'Elegí al menos un criterio de producto o servicio, uno de canal y uno de geografía.';
     return '';
@@ -154,6 +161,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     if (savedRecord || isSaving) return;
     if(!subjectId){setValidationError('Seleccioná un sujeto registrado o creá su ficha con «Nuevo sujeto».');return;}
     if(!department.trim() || !channelName.trim() || !Number.isFinite(amountARS) || amountARS<=0){setValidationError('Completá departamento, sala y un monto mayor a cero.');return;}
+    if(paymentError()){setValidationError(paymentError());return;}
     if(!selectedCriteriaIds.some(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')){setValidationError('Completá los factores personales desde «Editar ficha del sujeto».');return;}
     if(isPep && !pepDetails.trim()){setValidationError('Indicá el cargo o condición PEP evaluada.');return;}
     if(!operationDate || !Number.isFinite(new Date(operationDate).getTime())){setValidationError('Indicá la fecha y hora de la operación.');return;}
@@ -181,6 +189,8 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
       activityOcupation: activity,
       selectedCriteriaIds,
       operationType,
+      ...op,
+      cbu:op.cbu.replace(/\s/g,''),
       amountARS,
       locationDepartment: department,
       channelName,
@@ -208,7 +218,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/30 overflow-y-auto">
       {canEditSubject&&editingSubject&&<SubjectEditor criteria={criteria} initial={editingSubject} onClose={()=>setEditingSubject(null)} onSave={async data=>{const saved=await onSaveSubject(data);selectSubject(saved);setEditingSubject(null)}}/>}
-      <div role="dialog" aria-modal={!editingSubject} aria-hidden={!!editingSubject} inert={!!editingSubject} aria-label="Nueva evaluación" className="w-full max-w-5xl bg-white rounded-2xl sm:rounded-xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh] my-auto">
+      <div role="dialog" aria-modal={!editingSubject} aria-hidden={!!editingSubject} inert={!!editingSubject} aria-label="Nueva evaluación" className="w-full max-w-4xl bg-white rounded-2xl sm:rounded-xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh] my-auto">
         
         {/* Sticky Header */}
         <div className="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
@@ -292,7 +302,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               
               {/* Left Column: Form Fields */}
-              <div className={`lg:col-span-7 space-y-5 ${step===3?'hidden':''}`}>
+              <div className={`lg:col-span-12 space-y-5 ${step===3?'hidden':''}`}>
                 
                 {/* 1. Identification and Amount */}
                 <div className="bg-slate-50/70 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-4">
@@ -305,85 +315,28 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                     </h4>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    <div className={`sm:col-span-2 ${hid(1)}`}><SubjectNameField value={subjectName} linked={!!subjectId} onSelect={selectSubject} onChange={name=>{
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className={`sm:col-span-2 lg:col-span-3 ${hid(1)}`}><SubjectNameField value={subjectName} linked={!!subjectId} onSelect={selectSubject} onChange={name=>{
                       setSubjectName(name);
-                      if(subjectId){setSubjectId('');setSubjectType('PERSONA_FISICA');setTaxId('');setAddress('');setEmail('');setPhone('');setActivity('');setIsPep(false);setPepDetails('');setSelectedCriteriaIds([]);}
+                      if(subjectId){setSubjectId('');setSubjectType('PERSONA_FISICA');setTaxId('');setAddress('');setEmail('');setPhone('');setActivity('');setIsPep(false);setPepDetails('');setSubjectDetails(undefined);setSelectedCriteriaIds([]);}
                     }}/></div>
-                    {subjectId&&<div className={`sm:col-span-2 text-xs text-slate-500 ${hid(1)}`}><span className="font-medium text-teal-700">Ficha vinculada · {taxId}</span><details className="mt-2"><summary>Ver datos personales</summary><div className="mt-2 space-y-1"><p>{address||'Dirección pendiente'}</p><p>{email||'Correo pendiente'}</p><p>{phone||'Teléfono pendiente'}</p></div></details></div>}
-                    {canEditSubject&&<div className={`sm:col-span-2 flex gap-3 ${hid(1)}`}><button type="button" className="text-xs font-medium text-teal-700" onClick={()=>setEditingSubject(subjectId?{id:subjectId,updatedAt:subjectUpdatedAt,subjectName,taxId,subjectType,address,email,phone,activity,pepStatus:isPep,pepDetails,clientCriteriaIds:selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')}:{subjectName})}>{subjectId?'Editar ficha del sujeto':'Nuevo sujeto'}</button></div>}
-                    <label style={step===2?undefined:{display:'none'}} className="field-label sm:col-span-2">Fecha y hora de la operación<input aria-label="Fecha y hora de la operación" type="datetime-local" value={operationDate} onChange={e=>setOperationDate(e.target.value)}/></label>
-                    <div className={hid(2)}>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Tipo de Operación</label>
-                      <select
-                        value={operationType}
-                        onChange={(e) => setOperationType(e.target.value as any)}
-                        className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium focus:outline-hidden focus:border-teal-500"
-                      >
-                        <option value="COBRO_PREMIO">Cobro de Premio</option>
-                        <option value="APUESTA_PRESENCIAL">Apuesta Presencial en Casino</option>
-                        <option value="APUESTA_ONLINE">Apuesta en Plataforma Online</option>
-                        <option value="CAMBIO_FICHAS">Canje / Fichas de Juego</option>
-                        <option value="ALTA_AGENCIA">Alta de Agencia / Permisionario</option>
-                      </select>
-                    </div>
-
-                    <div className={hid(2)}>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Monto de la Operación ($ ARS)</label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
-                        <input
-                          type="number"
-                          step="100000"
-                          value={amountARS}
-                          onChange={(e) => setAmountARS(Number(e.target.value))}
-                          className="w-full py-2 pl-8 pr-3 bg-white border border-slate-300 rounded-xl font-mono text-sm font-bold focus:outline-hidden focus:border-teal-500"
-                        />
-                      </div>
-                      <div className="flex items-center justify-between mt-1 text-[11px]">
-                        <span className="font-semibold text-slate-500">$ {amountARS.toLocaleString('es-AR')}</span>
-                        <span className={`px-1.5 py-0.2 rounded font-bold border ${currentThresholdStatus.color}`}>
-                          {currentThresholdStatus.text}
-                        </span>
-                      </div>
-                    </div>
+                    {subjectId&&<div className={`sm:col-span-2 lg:col-span-3 rounded-xl border border-teal-200 bg-teal-50/60 p-3 text-sm text-slate-700 ${hid(1)}`}><p className="font-semibold text-teal-900">Sujeto encontrado: {subjectName}</p><p className="mt-1 text-xs text-slate-600">{subjectDetails?.documentType||'Documento'} {taxId}{subjectDetails?.cuit?` · CUIT ${subjectDetails.cuit}`:''} · {address||'Domicilio pendiente'}</p><p className="text-xs text-slate-600">{[phone,email,activity].filter(Boolean).join(' · ')||'Contacto pendiente'}{isPep?' · PEP':''}</p></div>}
+                    {canEditSubject&&<div className={`sm:col-span-2 lg:col-span-3 flex gap-3 ${hid(1)}`}><button type="button" className="text-xs font-medium text-teal-700" onClick={()=>setEditingSubject(subjectId?{id:subjectId,updatedAt:subjectUpdatedAt,subjectName,taxId,subjectType,address,email,phone,activity,pepStatus:isPep,pepDetails,details:subjectDetails,clientCriteriaIds:selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')}:{subjectName})}>{subjectId?'Editar ficha del sujeto':'Nuevo sujeto'}</button></div>}
+                    <div className={hid(2)}><label className="block text-xs font-bold text-slate-700 mb-1">Fecha y hora de la operación<input aria-label="Fecha y hora de la operación" type="datetime-local" value={operationDate} onChange={e=>setOperationDate(e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 mt-1"/></label></div>
+                    <div className={hid(2)}><label className="block text-xs font-bold text-slate-700 mb-1">Importe en pesos ($)<input type="number" min="0" step="0.01" value={amountARS||''} onChange={e=>setAmountARS(Number(e.target.value))} className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 font-mono mt-1"/></label><p className="mt-1 text-[11px]"><span className={`px-1.5 py-0.5 rounded font-bold border ${currentThresholdStatus.color}`}>{currentThresholdStatus.text}</span></p></div>
+                    <div className={hid(2)}><label className="block text-xs font-bold text-slate-700 mb-1">Tipo de operación<select value={operationType} onChange={e=>setOperationType(e.target.value as any)} className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 mt-1"><option value="COBRO_PREMIO">Cobro de premio</option><option value="APUESTA_PRESENCIAL">Apuesta presencial</option><option value="APUESTA_ONLINE">Apuesta en plataforma online</option><option value="CAMBIO_FICHAS">Canje de fichas</option><option value="ALTA_AGENCIA">Alta de agencia</option></select></label></div>
+                    <div className={`${hid(2)}`}><label className="block text-xs font-bold text-slate-700 mb-1">Juego<input value={op.game} maxLength={120} onChange={e=>setOpField("game",e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 mt-1"/></label></div>
+                    <div className={`${hid(2)}`}><label className="block text-xs font-bold text-slate-700 mb-1">Modalidad<input value={op.modality} maxLength={120} onChange={e=>setOpField("modality",e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 mt-1"/></label></div>
+                    <div className={`${hid(2)}`}><label className="block text-xs font-bold text-slate-700 mb-1">Sorteo<input value={op.drawName} maxLength={120} onChange={e=>setOpField("drawName",e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 mt-1"/></label></div>
+                    <div className={`${hid(2)}`}><label className="block text-xs font-bold text-slate-700 mb-1">Fecha del sorteo<input type="date" value={op.drawDate} onChange={e=>setOpField("drawDate",e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 mt-1"/></label></div>
+                    <div className={`${hid(2)}`}><label className="block text-xs font-bold text-slate-700 mb-1">N° de agencia<input value={op.agencyNumber} maxLength={30} onChange={e=>setOpField("agencyNumber",e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 mt-1"/></label></div>
+                    <div className={`${hid(2)}`}><label className="block text-xs font-bold text-slate-700 mb-1">Departamento<select value={department} onChange={e=>setDepartment(e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 mt-1"><option value="">Seleccionar</option>{DEPARTMENTS.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label></div>
+                    <div className={`${hid(2)}`}><label className="block text-xs font-bold text-slate-700 mb-1">Sala de juego o canal<input value={channelName} onChange={e=>setChannelName(e.target.value)} placeholder="Ej. Casino Concordia, Agencia 104" className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 mt-1"/></label></div>
+                    <div className={`${hid(2)}`}><label className="block text-xs font-bold text-slate-700 mb-1">Forma de pago<select value={op.paymentMethod} onChange={e=>setOpField("paymentMethod",e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 mt-1"><option value="EFECTIVO">Efectivo</option><option value="TRANSFERENCIA">Transferencia</option><option value="OTRO">Otro</option></select></label></div>
+                    {op.paymentMethod==='TRANSFERENCIA'&&<><div className={`${hid(2)}`}><label className="block text-xs font-bold text-slate-700 mb-1">Banco emisor *<input value={op.issuingBank} maxLength={120} onChange={e=>setOpField("issuingBank",e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 mt-1"/></label></div><div className={`${hid(2)}`}><label className="block text-xs font-bold text-slate-700 mb-1">CBU * (22 dígitos)<input inputMode="numeric" value={op.cbu} maxLength={30} onChange={e=>setOpField("cbu",e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 font-mono mt-1"/></label></div></>}
+                    {op.paymentMethod!=='EFECTIVO'&&<div className={`${hid(2)}`}><label className="block text-xs font-bold text-slate-700 mb-1">N° de cheque (opcional)<input value={op.chequeNumber} maxLength={40} onChange={e=>setOpField("chequeNumber",e.target.value)} className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-teal-500 mt-1"/></label></div>}
                   </div>
-
                   {subjectId&&<div className={`text-xs text-slate-600 bg-white border border-slate-200 rounded-lg p-3 space-y-1 ${hid(1)}`}><p>Tipo: {subjectType==='PERSONA_FISICA'?'Persona física':subjectType==='PERSONA_JURIDICA'?'Persona jurídica':'Agencia'}</p><p>Actividad: {activity}</p><p>Condición PEP: {isPep?`Sí · ${pepDetails}`:'No'}</p><p>Factores personales: {selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE').map(id=>criteria.find(c=>c.id===id)?.name).join(' · ')||'Pendientes en la ficha del sujeto'}</p></div>}
-                  {/* Department & Channel */}
-                  <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3.5 ${hid(2)}`}>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Departamento (Entre Ríos)</label>
-                      <select
-                        value={department}
-                        onChange={(e) => setDepartment(e.target.value)}
-                        className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium focus:outline-hidden focus:border-teal-500"
-                      >
-                        <option value="">Seleccionar departamento</option>
-                        <option value="Paraná">Paraná (Capital)</option>
-                        <option value="Concordia">Concordia (Frontera)</option>
-                        <option value="Gualeguaychú">Gualeguaychú (Frontera)</option>
-                        <option value="Colón">Colón (Frontera)</option>
-                        <option value="Uruguay">Concepción del Uruguay</option>
-                        <option value="Victoria">Victoria</option>
-                        <option value="Federación">Federación</option>
-                        <option value="La Paz">La Paz</option>
-                        <option value="Villaguay">Villaguay</option>
-                        <option value="Gualeguay">Gualeguay</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Sala de Juego / Canal</label>
-                      <input
-                        type="text"
-                        value={channelName}
-                        onChange={(e) => setChannelName(e.target.value)}
-                        placeholder="Ej. Casino Concordia, Agencia 104..."
-                        className="w-full py-2 px-3 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium focus:outline-hidden focus:border-teal-500"
-                      />
-                    </div>
-                  </div>
                 </div>
 
                 {/* 2. Factores de Riesgo / Matriz Selection */}

@@ -366,6 +366,7 @@ export default function App() {
         criteria={criteria}
         factorWeights={factorWeights}
         thresholds={thresholds}
+        subjects={subjects}
         initialReportType={exportInitialType}
       />
 

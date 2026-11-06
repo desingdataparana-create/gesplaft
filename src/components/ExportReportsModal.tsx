@@ -1,9 +1,10 @@
 import React,{useMemo,useState} from 'react';
 import {X,Download} from 'lucide-react';
-import type {EvaluationRecord,RiskCriterion,FactorWeight,RegulatoryThreshold,OrganizationSettings} from '../types';
+import type {EvaluationRecord,RiskCriterion,FactorWeight,RegulatoryThreshold,OrganizationSettings,Subject} from '../types';
+import {buildPremiosXls,premiosOf} from '../utils/premiosExport';
 import {filterRecordsByPeriod,generateRecordsXLS,generateRecordsCSV,generateCriteriaXLS,generateCriteriaCSV,generateThresholdsXLS,generateThresholdsCSV,downloadFile} from '../utils/exportUtils';
 
-interface Props{organization:OrganizationSettings;isOpen:boolean;onClose:()=>void;records:EvaluationRecord[];criteria:RiskCriterion[];factorWeights:FactorWeight[];thresholds:RegulatoryThreshold[];initialReportType?:string}
+interface Props{organization:OrganizationSettings;isOpen:boolean;onClose:()=>void;records:EvaluationRecord[];criteria:RiskCriterion[];factorWeights:FactorWeight[];thresholds:RegulatoryThreshold[];subjects?:Subject[];initialReportType?:string}
 
 const iso=(d:Date)=>d.toISOString().slice(0,10);
 function range(period:string):{start:string;end:string}{
@@ -14,8 +15,8 @@ function range(period:string):{start:string;end:string}{
   return {start:'',end:''};
 }
 
-export function ExportReportsModal({organization,isOpen,onClose,records,criteria,factorWeights,thresholds}:Props){
-  const [period,setPeriod]=useState('MES'),[from,setFrom]=useState(''),[to,setTo]=useState(''),[risk,setRisk]=useState('ALL'),[status,setStatus]=useState('ALL'),[done,setDone]=useState('');
+export function ExportReportsModal({organization,isOpen,onClose,records,criteria,factorWeights,thresholds,subjects=[]}:Props){
+  const [period,setPeriod]=useState('MES'),[from,setFrom]=useState(''),[to,setTo]=useState(''),[risk,setRisk]=useState('ALL'),[status,setStatus]=useState('ALL'),[done,setDone]=useState(''),[building,setBuilding]=useState(false);
   const {start,end}=period==='PERSONALIZADO'?{start:from,end:to}:range(period);
   const rows=useMemo(()=>filterRecordsByPeriod(records,{startDate:start||undefined,endDate:end||undefined,riskLevel:risk,status,pepOnly:null,department:'ALL'}),[records,start,end,risk,status]);
   if(!isOpen)return null;
@@ -23,6 +24,8 @@ export function ExportReportsModal({organization,isOpen,onClose,records,criteria
   const meta={title:'Reporte de Evaluaciones y Monitoreo de Riesgo PLA/FT',generatedAt:new Date().toLocaleString('es-AR'),generatedBy:organization.shortName,startDate:start||'Inicio histórico',endDate:end||'Actualidad',totalRecords:rows.length,totalAmountARS:total};
   const save=(content:string,name:string,type:string)=>{downloadFile(content,name,type);setDone(name)};
   const xls='application/vnd.ms-excel;charset=utf-8;',csv='text/csv;charset=utf-8;';
+  const premios=premiosOf(rows);
+  const downloadPremios=async()=>{setBuilding(true);try{const bytes=await buildPremiosXls(rows,subjects),blob=new Blob([bytes as BlobPart],{type:'application/vnd.ms-excel'}),url=URL.createObjectURL(blob),a=document.createElement('a'),name=`Premios_${stamp}.xls`;a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);setDone(name)}finally{setBuilding(false)}};
   const sel='w-full p-3 border border-slate-300 rounded-lg bg-white text-sm';
   const link='text-teal-800 font-semibold underline underline-offset-2';
   return <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-3 overflow-y-auto"><div role="dialog" aria-modal="true" aria-label="Informes" className="bg-white rounded-xl w-full max-w-xl max-h-[94vh] flex flex-col">
@@ -39,6 +42,7 @@ export function ExportReportsModal({organization,isOpen,onClose,records,criteria
         <button type="button" disabled={!rows.length} className="button-primary inline-flex items-center gap-2" onClick={()=>save(generateRecordsXLS(rows,meta),`Expedientes_${stamp}.xls`,xls)}><Download size={16}/>Descargar Excel</button>
         <button type="button" disabled={!rows.length} className="button-secondary" onClick={()=>save(generateRecordsCSV(rows),`Expedientes_${stamp}.csv`,csv)}>Descargar CSV</button>
       </div>
+      <div className="border-t border-slate-100 pt-4 space-y-2"><p className="text-sm font-semibold text-slate-800">Formato para importar premios</p><p className="text-sm text-slate-600">Una fila por cobro de premio, con los datos del sujeto y de la operación en las columnas del archivo de importación. Usa el período, riesgo y estado elegidos arriba.</p><button type="button" disabled={!premios.length||building} className="button-secondary" onClick={downloadPremios}>{building?'Generando…':`Descargar premios en Excel (.xls) · ${premios.length}`}</button></div>
       {done&&<p role="status" className="text-sm text-emerald-800">Archivo generado: {done}</p>}
       <details className="border-t border-slate-100 pt-3 text-sm"><summary className="cursor-pointer font-semibold text-teal-800">Otros informes: parámetros y umbrales</summary>
         <div className="mt-3 space-y-2"><p>Parámetros de riesgo ({criteria.length}): <button type="button" className={link} onClick={()=>save(generateCriteriaXLS(criteria,factorWeights),`Parametros_${stamp}.xls`,xls)}>Excel</button> · <button type="button" className={link} onClick={()=>save(generateCriteriaCSV(criteria),`Parametros_${stamp}.csv`,csv)}>CSV</button></p>

@@ -152,7 +152,9 @@ export default function App() {
       else if (hash.includes('simulador') || hash.includes('evaluacion')) go('monitoreo', true);
       else if (hash.includes('ajustes')) go('ajustes');
       else if (hash.includes('sujetos')) go('sujetos');
-      else if (/normativa|parametros|matriz|umbrales/.test(hash)) go('normativa');
+      else if (hash.includes('umbrales')) go('umbrales');
+      else if (hash.includes('matriz')) go('matriz');
+      else if (/normativa|parametros/.test(hash)) go('normativa');
       else go('monitoreo');
     };
 
@@ -163,14 +165,15 @@ export default function App() {
 
   // Update hash when tab changes
   const handleTabChange = (tab: string) => {
+    if(isNewEvaluationModalOpen){setIsNewEvaluationModalOpen(false);setInitialEvaluationSubject(null);returnTab.current='monitoreo';}
     if(tab==='dashboard')void loadState().catch(e=>setServerError(e.message));
     setCurrentTab(tab);
     if(tab==='dashboard'||tab==='usuarios'){window.location.hash=`/${tab}/`;
     }else if(tab==='ajustes'){window.location.hash='/ajustes/';
     } else if (tab === 'sujetos') {
       window.location.hash = '/sujetos/';
-    } else if (tab === 'normativa') {
-      window.location.hash = '/normativa/';
+    } else if (tab === 'normativa' || tab === 'umbrales' || tab === 'matriz') {
+      window.location.hash = `/${tab}/`;
     } else {
       window.location.hash = '/expedientes/';
     }
@@ -196,10 +199,14 @@ export default function App() {
   const handleResetDefaults = () => {
     if(window.confirm('¿Restablecer criterios, ponderaciones y umbrales a los valores de ejemplo?'))void saveConfig({criteria:INITIAL_RISK_CRITERIA,factorWeights:INITIAL_FACTOR_WEIGHTS,thresholds:INITIAL_REGULATORY_THRESHOLDS}).catch(()=>{});
   };
-  const handleSaveEvaluation = async (record:EvaluationRecord):Promise<EvaluationRecord> => {
+  const handleSaveEvaluation = async (record:EvaluationRecord,review?:{decision:'JUSTIFICAR'|'SEGUIR'|'ROS';reasoning:string}):Promise<EvaluationRecord> => {
     const payload={subjectId:record.subjectId,requestId:record.id,record};
     const data=await request<{record:EvaluationRecord;subject:Subject}>('saveEvaluation',payload);
-    setRecords(prev=>[data.record,...prev.filter(r=>r.id!==data.record.id)]);setSubjects(prev=>[data.subject,...prev.filter(s=>s.id!==data.subject.id)]);return data.record;
+    setRecords(prev=>[data.record,...prev.filter(r=>r.id!==data.record.id)]);setSubjects(prev=>[data.subject,...prev.filter(s=>s.id!==data.subject.id)]);
+    if(!review)return data.record;
+    const map={JUSTIFICAR:{action:'CERRAR_JUSTIFICADA',classification:'SIN_INUSUALIDAD'},SEGUIR:{action:'SEGUIMIENTO',classification:'EN_REVISION'},ROS:{action:'DETERMINAR_SOSPECHOSA',classification:'SOSPECHOSA'}}[review.decision];
+    const reviewed=await request<{record:EvaluationRecord}>('reviewCase',{...map,id:data.record.id,version:data.record.analysisVersion||0,reasoning:review.reasoning,rosReference:'',rosSubmittedAt:''});
+    setRecords(prev=>prev.map(r=>r.id===reviewed.record.id?reviewed.record:r));return reviewed.record;
   };
   const handleUpdateRecordStatus = async (id:string,status:EvaluationRecord['status']) => {
     setSaving(true);setServerError('');
@@ -222,6 +229,7 @@ export default function App() {
   const permitted=currentTab==='usuarios'?user?.role==='SUPERADMIN':allow(tabModules[currentTab]||'expedientes');
   useEffect(()=>{if(!loaded||permitted)return;const next=Object.keys(tabModules).find(t=>allow(tabModules[t]));if(next)handleTabChange(next);},[loaded,user,currentTab]);
   if(!loading&&!user)return <div className="login-shell"><section className="surface p-8 max-w-md"><span className="workspace-kicker">IAFAS · PLA/FT</span><h1 className="text-2xl font-semibold my-4">Acceso al sistema</h1><p className="text-sm mb-6">{serverError||'Iniciá sesión con una cuenta habilitada por el superadministrador.'}</p><a className="button-primary" target="_top" href={sitePath('/signin-with-chatgpt?return_to=%2F')}>{passwordAuth()?'Iniciar sesión':'Iniciar sesión con ChatGPT'}</a><a className="block mt-5 text-sm underline" target="_top" href={sitePath('/signout-with-chatgpt?return_to=%2F')}>Cambiar cuenta</a></section></div>;
+  const evaluationOpen=isNewEvaluationModalOpen&&!loading&&!serverError&&allow('expedientes',true);
   return (
     <div className="app-shell minimal-ui workspace-ui min-h-screen bg-[#FAFBFC] text-slate-800 flex flex-col font-sans antialiased selection:bg-sky-500 selection:text-white">
       
@@ -251,6 +259,25 @@ export default function App() {
       {loading && <p className="p-8 text-slate-500" role="status">Cargando datos…</p>}
       {/* Main Content View with Clean Layout */}
       <main data-section={currentTab} id="contenido" className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
+      {/* Nueva evaluación: página propia */}
+      <RiskEvaluationModal
+        thresholds={thresholds}
+        records={records}
+        canEditSubject={allow('sujetos',true)}
+        canAnalyze={allow('analisis',true)}
+        isOpen={evaluationOpen}
+        onClose={handleCloseNewEvaluationModal}
+        criteria={criteria}
+        factorWeights={factorWeights}
+        onSaveSubject={handleSaveSubject}
+        onSaveEvaluation={handleSaveEvaluation}
+        onViewDossier={(rec) => {
+          handleCloseNewEvaluationModal();
+          setSelectedDossier(rec);
+        }}
+        initialSubjectData={initialEvaluationSubject}
+      />
+        {!evaluationOpen&&<>
         <SectionTabs user={user} currentTab={currentTab} onChange={handleTabChange}/>
         {loaded&&!loading&&currentTab==='dashboard'&&dashboard&&<DashboardView data={dashboard} onNavigate={handleTabChange} canOpen={allow('expedientes')} records={records} canCreate={allow('expedientes',true)} onNewEvaluation={()=>handleOpenNewEvaluationModal()} onOpenCase={setSelectedDossier}/>}
         {loaded&&!loading&&currentTab==='usuarios'&&user?.role==='SUPERADMIN'&&<UsersView/>}
@@ -271,6 +298,7 @@ export default function App() {
 
         {loaded && !loading && allow('riesgo') && (currentTab === 'normativa' || currentTab === 'parametros' || currentTab === 'matriz' || currentTab === 'umbrales') && (
           <fieldset className="min-w-0" disabled={!allow('riesgo',true)}><NormativaMatrizView
+            section={currentTab==='umbrales'?'UMBRALES':currentTab==='matriz'?'MATRIZ':'CRITERIOS'}
             onDeleteCriterion={user?.role==='SUPERADMIN'?handleDeleteCriterion:undefined}
             deleting={saving}
             thresholds={thresholds}
@@ -289,6 +317,7 @@ export default function App() {
           /></fieldset>
         )}
         {loaded && !loading && currentTab==='monitoreo' && user?.role==='SUPERADMIN' && records.length===0 && <details className="text-xs text-slate-400 max-w-7xl mx-auto w-full"><summary>Opciones de prueba</summary><button disabled={saving} onClick={()=>importRecords(INITIAL_EVALUATION_RECORDS)} className="text-teal-700 underline mt-3">Cargar ejemplos de prueba</button></details>}
+        </>}
       </main>
 
       {/* Sleek Minimal Footer */}
@@ -306,24 +335,6 @@ export default function App() {
       {/* ======================================================== */}
       {/* RESPONSIVE POPUP MODALS: CONSULTAS & CARGAS              */}
       {/* ======================================================== */}
-
-      {/* 2. Modal Emergente de Carga de Operación / Nueva Evaluación */}
-      <RiskEvaluationModal
-        thresholds={thresholds}
-        records={records}
-        canEditSubject={allow('sujetos',true)}
-        isOpen={isNewEvaluationModalOpen && !loading && !serverError && allow('expedientes',true)}
-        onClose={handleCloseNewEvaluationModal}
-        criteria={criteria}
-        factorWeights={factorWeights}
-        onSaveSubject={handleSaveSubject}
-        onSaveEvaluation={handleSaveEvaluation}
-        onViewDossier={(rec) => {
-          handleCloseNewEvaluationModal();
-          setSelectedDossier(rec);
-        }}
-        initialSubjectData={initialEvaluationSubject}
-      />
 
       {selectedAnalysis&&allow('analisis',true)&&<CaseAnalysisModal key={`${selectedAnalysis.id}-${selectedAnalysis.analysisVersion||0}`} record={selectedAnalysis} onClose={()=>setSelectedAnalysis(null)} onSaved={record=>setRecords(prev=>prev.map(r=>r.id===record.id?record:r))}/>}
       {/* 3. Modal Emergente de Consulta: Ficha Oficial de Riesgo / Expediente */}

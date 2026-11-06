@@ -26,6 +26,7 @@ import {
 import { EditThresholdModal } from './EditThresholdModal';
 
 interface NormativaMatrizViewProps {
+  section?: 'UMBRALES' | 'MATRIZ' | 'CRITERIOS';
   onDeleteCriterion?:(criterion:RiskCriterion)=>Promise<void>;
   deleting?:boolean;
   thresholds: RegulatoryThreshold[];
@@ -41,6 +42,7 @@ interface NormativaMatrizViewProps {
 }
 
 export const NormativaMatrizView: React.FC<NormativaMatrizViewProps> = ({
+  section,
   onDeleteCriterion,deleting=false,
   thresholds,
   onUpdateThresholds,
@@ -51,7 +53,8 @@ export const NormativaMatrizView: React.FC<NormativaMatrizViewProps> = ({
   onResetDefaults,
   onOpenExportModal,
 }) => {
-  const [activeTab, setActiveTab] = useState<'UMBRALES' | 'MATRIZ' | 'CRITERIOS'>('CRITERIOS');
+  const [innerTab] = useState<'UMBRALES' | 'MATRIZ' | 'CRITERIOS'>('CRITERIOS');
+  const activeTab = section ?? innerTab;
 
   // Thresholds modal state
   const [thresholdToEdit, setThresholdToEdit] = useState<RegulatoryThreshold | null>(null);
@@ -127,8 +130,6 @@ export const NormativaMatrizView: React.FC<NormativaMatrizViewProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto w-full">
-      <div className="page-heading"><div><h1>Configuración</h1><p>Criterios, umbrales y matriz de evaluación.</p></div></div>
-      <nav aria-label="Secciones de configuración" className="flex gap-5 border-b border-slate-200 overflow-x-auto">{([['CRITERIOS','Criterios'],['UMBRALES','Umbrales'],['MATRIZ','Matriz']] as const).map(([id,label])=><button key={id} aria-current={activeTab===id?'page':undefined} onClick={()=>setActiveTab(id)} className={`text-sm py-3 whitespace-nowrap border-b-2 ${activeTab===id?'border-teal-700 text-teal-700 font-medium':'border-transparent text-slate-400'}`}>{label}</button>)}</nav>
 
       {/* SUB-VIEW 1: UMBRALES REGULATORIOS UIF */}
       {activeTab === 'UMBRALES' && (

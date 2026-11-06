@@ -6,7 +6,7 @@ import {
   RiskCriterion, 
   FactorWeight, 
   EvaluationRecord, 
-  RiskLevel, Subject, ProfileAssessment
+  RiskLevel, Subject
 } from '../types';
 import { 
   X,
@@ -52,11 +52,8 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   onViewDossier,
   initialSubjectData,
 }) => {
-  const emptyProfile:ProfileAssessment={profileSummary:'',comparison:'SIN_DATOS',comparisonReason:'',originDeclared:'',destinationDeclared:'',beneficialOwner:''};
-  const [profileAssessment,setProfileAssessment]=useState<ProfileAssessment>(emptyProfile);
   const [criterionCategory,setCriterionCategory]=useState<RiskCriterion['category']>('PRODUCTO');
   const [operationDate,setOperationDate]=useState('');
-  const [conditionConfirmed,setConditionConfirmed]=useState(false);
   const currentLocalDate=()=>{const now=new Date();return new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16)};
   const [requestId,setRequestId]=useState('');
   const [subjectUpdatedAt,setSubjectUpdatedAt]=useState<string|undefined>();
@@ -68,7 +65,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const selectSubject = (subject:Subject) => {
     setSelectedCriteriaIds(prev=>[...prev.filter(id=>criteria.find(c=>c.id===id)?.category!=='CLIENTE'),...(subject.clientCriteriaIds||[])]);
-    if(subjectId!==subject.id)setProfileAssessment(emptyProfile);setConditionConfirmed(false);
+    
     setSubjectUpdatedAt(subject.updatedAt);setSubjectId(subject.id);setSubjectName(subject.subjectName);setTaxId(subject.taxId);setSubjectType(subject.subjectType);setActivity(subject.activity);setIsPep(subject.pepStatus);setPepDetails(subject.pepDetails || '');setAddress(subject.address);setEmail(subject.email);setPhone(subject.phone);setValidationError('');
   };
 
@@ -97,7 +94,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   const resetForm = () => {
     setRequestId(crypto.randomUUID());setSubjectUpdatedAt(initialSubjectData?.updatedAt);
     setEditingSubject(null);
-    setCriterionCategory('PRODUCTO');setProfileAssessment(emptyProfile);setOperationDate(currentLocalDate());setConditionConfirmed(false);
+    setCriterionCategory('PRODUCTO');setOperationDate(currentLocalDate());
     setSubjectId(initialSubjectData?.id || '');
     setAddress(initialSubjectData?.address || '');setEmail(initialSubjectData?.email || '');setPhone(initialSubjectData?.phone || '');
 
@@ -113,13 +110,12 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   };
   useEffect(() => { if (isOpen) resetForm(); }, [initialSubjectData, isOpen]);
 
-  useEffect(()=>setConditionConfirmed(false),[subjectId,isPep,pepDetails,activity]);
   const nextOperationForSubject=()=>{
     if(!savedRecord)return;
     setRequestId(crypto.randomUUID());
     setSubjectId(savedRecord.subjectId || '');
     setAmountARS(0);setDepartment('');setChannelName('');setNotes('');setSelectedCriteriaIds(prev=>prev.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE'));
-    setCriterionCategory('PRODUCTO');setProfileAssessment(emptyProfile);setOperationDate(currentLocalDate());setConditionConfirmed(false);setSavedRecord(null);setValidationError('');setStep(2);
+    setCriterionCategory('PRODUCTO');setOperationDate(currentLocalDate());setSavedRecord(null);setValidationError('');setStep(2);
   };
 
   // Toggle criterion selection
@@ -142,7 +138,6 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     if(s===1){
       if(!subjectId)return 'Seleccioná un sujeto registrado o creá su ficha con «Nuevo sujeto».';
       if(!selectedCriteriaIds.some(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE'))return 'Completá los factores personales desde «Editar ficha del sujeto».';
-      if(!conditionConfirmed)return 'Confirmá la condición del sujeto para esta operación.';
       if(isPep && !pepDetails.trim())return 'Indicá el cargo o condición PEP evaluada.';
       return '';
     }
@@ -160,7 +155,6 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     if(!subjectId){setValidationError('Seleccioná un sujeto registrado o creá su ficha con «Nuevo sujeto».');return;}
     if(!department.trim() || !channelName.trim() || !Number.isFinite(amountARS) || amountARS<=0){setValidationError('Completá departamento, sala y un monto mayor a cero.');return;}
     if(!selectedCriteriaIds.some(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')){setValidationError('Completá los factores personales desde «Editar ficha del sujeto».');return;}
-    if(!conditionConfirmed){setValidationError('Confirmá la condición del sujeto para esta operación.');return;}
     if(isPep && !pepDetails.trim()){setValidationError('Indicá el cargo o condición PEP evaluada.');return;}
     if(!operationDate || !Number.isFinite(new Date(operationDate).getTime())){setValidationError('Indicá la fecha y hora de la operación.');return;}
     setValidationError('');
@@ -169,10 +163,9 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
 
     const newRecord: EvaluationRecord = {
       subjectUpdatedAt,
-      profileAssessment,
       operationAt:new Date(operationDate).toISOString(),
       activityAtOperation:activity,
-      conditionConfirmed,
+      conditionConfirmed:true,
       id: newRecordId,
       dossierNumber: dossierNo,
       timestamp: new Date().toISOString(),
@@ -315,7 +308,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div className={`sm:col-span-2 ${hid(1)}`}><SubjectNameField value={subjectName} linked={!!subjectId} onSelect={selectSubject} onChange={name=>{
                       setSubjectName(name);
-                      if(subjectId){setSubjectId('');setSubjectType('PERSONA_FISICA');setTaxId('');setAddress('');setEmail('');setPhone('');setActivity('');setIsPep(false);setPepDetails('');setSelectedCriteriaIds([]);setProfileAssessment(emptyProfile);setConditionConfirmed(false);}
+                      if(subjectId){setSubjectId('');setSubjectType('PERSONA_FISICA');setTaxId('');setAddress('');setEmail('');setPhone('');setActivity('');setIsPep(false);setPepDetails('');setSelectedCriteriaIds([]);}
                     }}/></div>
                     {subjectId&&<div className={`sm:col-span-2 text-xs text-slate-500 ${hid(1)}`}><span className="font-medium text-teal-700">Ficha vinculada · {taxId}</span><details className="mt-2"><summary>Ver datos personales</summary><div className="mt-2 space-y-1"><p>{address||'Dirección pendiente'}</p><p>{email||'Correo pendiente'}</p><p>{phone||'Teléfono pendiente'}</p></div></details></div>}
                     {canEditSubject&&<div className={`sm:col-span-2 flex gap-3 ${hid(1)}`}><button type="button" className="text-xs font-medium text-teal-700" onClick={()=>setEditingSubject(subjectId?{id:subjectId,updatedAt:subjectUpdatedAt,subjectName,taxId,subjectType,address,email,phone,activity,pepStatus:isPep,pepDetails,clientCriteriaIds:selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')}:{subjectName})}>{subjectId?'Editar ficha del sujeto':'Nuevo sujeto'}</button></div>}
@@ -357,12 +350,6 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                   </div>
 
                   {subjectId&&<div className={`text-xs text-slate-600 bg-white border border-slate-200 rounded-lg p-3 space-y-1 ${hid(1)}`}><p>Tipo: {subjectType==='PERSONA_FISICA'?'Persona física':subjectType==='PERSONA_JURIDICA'?'Persona jurídica':'Agencia'}</p><p>Actividad: {activity}</p><p>Condición PEP: {isPep?`Sí · ${pepDetails}`:'No'}</p><p>Factores personales: {selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE').map(id=>criteria.find(c=>c.id===id)?.name).join(' · ')||'Pendientes en la ficha del sujeto'}</p></div>}
-                  <label className={`flex items-start gap-2 text-xs text-slate-600 ${hid(1)}`}><input type="checkbox" checked={conditionConfirmed} onChange={e=>setConditionConfirmed(e.target.checked)} className="mt-0.5"/>Revisé la ficha del sujeto que se utilizará en este expediente.</label>
-                  <details className={`surface p-3 space-y-3 ${hid(2)}`}><summary className="text-xs text-teal-700">Perfil transaccional, origen y destino</summary><div className="space-y-3 mt-3">
-                    <label className="field-label">Perfil transaccional considerado<textarea rows={2} value={profileAssessment.profileSummary} onChange={e=>setProfileAssessment(p=>({...p,profileSummary:e.target.value}))} placeholder="Actividad, ingresos declarados, antecedentes y documentación de respaldo" className="border border-slate-200 rounded-lg p-2 text-sm"/></label>
-                    <label className="field-label">Comparación con el perfil<select value={profileAssessment.comparison} onChange={e=>setProfileAssessment(p=>({...p,comparison:e.target.value as ProfileAssessment['comparison']}))}><option value="SIN_DATOS">Información insuficiente</option><option value="COMPATIBLE">Compatible según revisión inicial</option><option value="DESVIACION">Se detecta un desvío para analizar</option></select></label>
-                    {([['comparisonReason','Fundamento de la comparación'],['originDeclared','Origen declarado de fondos'],['destinationDeclared','Destino declarado'],['beneficialOwner','Beneficiario final / terceros, si corresponde']] as const).map(([key,label])=><label className="field-label" key={key}>{label}<input value={profileAssessment[key]} onChange={e=>setProfileAssessment(p=>({...p,[key]:e.target.value}))}/></label>)}
-                  </div></details>
                   {/* Department & Channel */}
                   <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3.5 ${hid(2)}`}>
                     <div>

@@ -96,8 +96,8 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
 
   const [savedRecord, setSavedRecord] = useState<EvaluationRecord | null>(null);
   // Asistente de 3 pasos: 1 Sujeto, 2 Operación, 3 Resultado.
-  const [step,setStep]=useState<1|2|3>(1);
-  const hid=(visibleIn:1|2|3)=>step===visibleIn?'':'hidden';
+  const [step,setStep]=useState<1|2|3|4>(1);
+  const hid=(visibleIn:1|2|3|4)=>step===visibleIn?'':'hidden';
 
   const resetForm = () => {
     setRequestId(crypto.randomUUID());setSubjectUpdatedAt(initialSubjectData?.updatedAt);
@@ -143,7 +143,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   }, [criteria, factorWeights, selectedCriteriaIds, isPep, amountARS,thresholds,operationDate,subjectType,records,subjectId]);
 
   const paymentError=():string=>op.paymentMethod==='TRANSFERENCIA'&&(!op.issuingBank.trim()||!/^\d{22}$/.test(op.cbu.replace(/\s/g,'')))?'Para una transferencia indicá el banco emisor y el CBU de 22 dígitos.':'';
-  const validateStep=(s:1|2):string=>{
+  const validateStep=(s:1|2|3):string=>{
     if(s===1){
       if(!subjectId)return 'Seleccioná un sujeto registrado o creá su ficha con «Nuevo sujeto».';
       if(!selectedCriteriaIds.some(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE'))return 'Completá los factores personales desde «Editar ficha del sujeto».';
@@ -153,13 +153,14 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     if(!operationDate || !Number.isFinite(new Date(operationDate).getTime()))return 'Indicá la fecha y hora de la operación.';
     if(!department.trim() || !channelName.trim() || !Number.isFinite(amountARS) || amountARS<=0)return 'Completá departamento, sala y un monto mayor a cero.';
     if(paymentError())return paymentError();
+    if(s===2)return '';
     const has=(category:RiskCriterion['category'])=>selectedCriteriaIds.some(id=>criteria.find(c=>c.id===id)?.category===category);
     if(!has('PRODUCTO')||!has('CANAL')||!has('GEOGRAFIA'))return 'Elegí al menos un criterio de producto o servicio, uno de canal y uno de geografía.';
     return '';
   };
-  const goNext=()=>{if(step===3)return;const msg=validateStep(step);setValidationError(msg);if(!msg)setStep((step+1) as 2|3);};
-  const goBack=()=>{setValidationError('');if(step>1)setStep((step-1) as 1|2);};
-  const stepTitles=['Sujeto','Operación','Resultado'] as const;
+  const goNext=()=>{if(step===4)return;const msg=validateStep(step);setValidationError(msg);if(!msg)setStep((step+1) as 2|3|4);};
+  const goBack=()=>{setValidationError('');if(step>1)setStep((step-1) as 1|2|3);};
+  const stepTitles=['Sujeto','Operación','Señales','Resultado'] as const;
   const handleSave = async () => {
     if (savedRecord || isSaving) return;
     if(!subjectId){setValidationError('Seleccioná un sujeto registrado o creá su ficha con «Nuevo sujeto».');return;}
@@ -230,7 +231,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
         {/* Scrollable Modal Content */}
         <div className="space-y-5">
           {!savedRecord&&<ol aria-label="Pasos de la evaluación" className="flex flex-wrap gap-x-6 gap-y-2">{stepTitles.map((t,i)=>{const n=i+1,done=n<step,current=n===step;return <li key={t} aria-current={current?'step':undefined} className={`flex items-center gap-2 text-sm ${current?'font-bold text-slate-900':done?'font-medium text-teal-800':'font-medium text-slate-600'}`}><span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${current?'bg-teal-700 text-white':done?'bg-teal-100 text-teal-800':'border-2 border-slate-400 text-slate-700'}`}>{done?<Check className="w-4 h-4"/>:n}</span>{t}</li>;})}</ol>}
-          {!savedRecord&&step<3&&validationError&&<p role="alert" className="text-sm text-rose-800 bg-rose-50 border border-rose-200 rounded-xl p-3">{validationError}</p>}
+          {!savedRecord&&step<4&&validationError&&<p role="alert" className="text-sm text-rose-800 bg-rose-50 border border-rose-200 rounded-xl p-3">{validationError}</p>}
           {savedRecord ? (
             /* Success confirmation card */
             <div className="p-6 sm:p-8 bg-emerald-50 border-2 border-emerald-300 rounded-2xl text-center space-y-4 my-auto">
@@ -282,10 +283,10 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
             <div className="grid grid-cols-1 gap-5">
               
               {/* Left Column: Form Fields */}
-              <div className={`lg:col-span-12 space-y-5 ${step===3?'hidden':''}`}>
+              <div className={`lg:col-span-12 space-y-5 ${step===4?'hidden':''}`}>
                 
                 {/* 1. Identification and Amount */}
-                <div className="bg-white p-5 sm:p-7 rounded-xl border border-slate-200 space-y-5">
+                <div className={`bg-white p-5 sm:p-7 rounded-xl border border-slate-200 space-y-5 ${step===3?'hidden':''}`}>
                   <div className="flex items-center gap-2 border-b border-slate-200 pb-2.5">
                     <span className="w-5 h-5 rounded-full bg-teal-600 text-white font-bold text-xs flex items-center justify-center">
                       {step}
@@ -319,25 +320,24 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                 </div>
 
                 {/* 2. Factores de Riesgo / Matriz Selection */}
-                <div className={`bg-white p-5 sm:p-7 rounded-xl border border-slate-200 space-y-3 ${hid(2)}`}>
+                <div className={`bg-white p-5 sm:p-7 rounded-xl border border-slate-200 space-y-3 ${hid(3)}`}>
                   <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
                     <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-teal-600 text-white font-bold text-xs flex items-center justify-center">
-                        2
-                      </span>
                       <h4 className="text-sm font-bold text-slate-900">
                         Señales de Alerta y Factores Detectados
                       </h4>
                     </div>
                     <span className="text-[11px] font-semibold text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
-                      {selectedCriteriaIds.length} seleccionados
+                      {selectedCriteriaIds.length} {selectedCriteriaIds.length===1?'seleccionado':'seleccionados'}
                     </span>
                   </div>
 
-                  <div className="flex flex-wrap gap-1">{([['PRODUCTO','Producto / servicio'],['CANAL','Canal'],['GEOGRAFIA','Geografía'],['OPERACIONAL','Señales adicionales']] as const).map(([category,label])=><button type="button" key={category} onClick={()=>setCriterionCategory(category)} className={`px-2 py-1.5 text-[11px] rounded-md ${criterionCategory===category?'bg-teal-50 text-teal-800':'text-slate-500'}`}>{label} ({criteria.filter(c=>c.category===category&&selectedCriteriaIds.includes(c.id)).length})</button>)}</div>
-                  <p className="text-[11px] text-slate-400">Seleccioná los factores de esta operación. Las condiciones personales provienen de la ficha del sujeto.</p>
+                  <p className="text-[11px] text-slate-400">Marcá los factores de esta operación en cada grupo (* obligatorios: al menos uno). Las condiciones personales provienen de la ficha del sujeto.</p>
+                  {([['PRODUCTO','Producto o servicio',true],['CANAL','Canal',true],['GEOGRAFIA','Geografía',true],['OPERACIONAL','Señales adicionales',false]] as const).map(([category,label,required])=>{const group=criteria.filter(c=>c.active&&c.category===category),count=group.filter(c=>selectedCriteriaIds.includes(c.id)).length;return <section key={category} aria-label={label} className="space-y-2 pt-1">
+                  <h5 className="flex items-center justify-between gap-2 text-xs font-bold text-slate-800"><span>{label}{required?' *':' (opcional)'}</span><span className={`font-semibold ${count?'text-teal-800':'text-slate-500'}`}>{count} {count===1?'seleccionado':'seleccionados'}</span></h5>
+                  {group.length===0&&<p className="text-xs text-slate-500">No hay criterios activos en esta categoría.</p>}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {criteria.filter(c => c.active && c.category===criterionCategory).map((item) => {
+                    {group.map((item) => {
                       const isSelected = selectedCriteriaIds.includes(item.id);
                       return (
                         <button
@@ -369,7 +369,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                         </button>
                       );
                     })}
-                  </div>
+                  </div></section>})}
 
                   {/* Observaciones */}
                   <div className="pt-2">
@@ -389,7 +389,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
               </div>
 
               {/* Paso 3: resultado y decisión */}
-              <div className={step===3?'bg-white border border-slate-200 rounded-xl p-5 sm:p-7 space-y-6':'hidden'}>
+              <div className={step===4?'bg-white border border-slate-200 rounded-xl p-5 sm:p-7 space-y-6':'hidden'}>
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
                   <span className={`px-5 py-2.5 rounded-full text-xl font-bold ${riskLevel==='CRITICO'?'bg-rose-900 text-white':riskLevel==='ALTO'?'bg-orange-100 text-orange-900':riskLevel==='MEDIO'?'bg-amber-100 text-amber-900':'bg-emerald-100 text-emerald-900'}`}>RIESGO {riskLevel}</span>
                   <span className="text-base text-slate-600">Puntaje {weightedScore} de 100 · {subjectName}</span>
@@ -466,9 +466,9 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
           )}
         </div>
 
-        {!savedRecord&&step<3&&<div className="flex items-center justify-between gap-3 flex-wrap">
+        {!savedRecord&&step<4&&<div className="flex items-center justify-between gap-3 flex-wrap">
           <button type="button" onClick={step===1?onClose:goBack} className="px-1 py-3 text-teal-800 font-semibold text-base cursor-pointer">{step===1?'Cancelar':'Atrás'}</button>
-          <button type="button" onClick={goNext} className="px-7 py-3.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-bold text-base cursor-pointer">{step===1?'Continuar':'Calcular riesgo'}</button>
+          <button type="button" onClick={goNext} className="px-7 py-3.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-bold text-base cursor-pointer">{step<3?'Continuar':'Calcular riesgo'}</button>
         </div>}
 
       </div>

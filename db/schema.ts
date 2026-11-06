@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
-import type { EvaluationRecord, RiskCriterion, FactorWeight, RegulatoryThreshold, OrganizationSettings } from '../src/types';
+import type { SubjectDetails, EvaluationRecord, RiskCriterion, FactorWeight, RegulatoryThreshold, OrganizationSettings } from '../src/types';
 
 export const subjects = sqliteTable('subjects', {
   id: text('id').primaryKey(), ownerId: text('owner_id').notNull(),
@@ -8,6 +8,7 @@ export const subjects = sqliteTable('subjects', {
   address: text('address').notNull().default(''), email: text('email').notNull().default(''), phone: text('phone').notNull().default(''),
   activity: text('activity').notNull().default(''), pepStatus: integer('pep_status', {mode:'boolean'}).notNull().default(false), pepDetails: text('pep_details').notNull().default(''),
   clientCriteriaIds: text('client_criteria_ids',{mode:'json'}).$type<string[]>().notNull().default([]),
+  details: text('details',{mode:'json'}).$type<SubjectDetails>().notNull().default({}),
   createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
 }, t => [uniqueIndex('subjects_owner_document').on(t.ownerId,t.documentKey), index('subjects_owner_name').on(t.ownerId,t.subjectName)]);
 export const evaluations = sqliteTable('evaluations', {

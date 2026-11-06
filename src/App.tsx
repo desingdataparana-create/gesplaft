@@ -8,7 +8,7 @@ import { SystemSettingsView, type ThemeMode } from './components/SystemSettingsV
 import { DEFAULT_ORGANIZATION } from './data/organization';
 import type { OrganizationSettings } from './types';
 import { request } from './utils/api';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { AlertsMonitoringView } from './components/AlertsMonitoringView';
 import { NormativaMatrizView } from './components/NormativaMatrizView';
@@ -17,6 +17,7 @@ import { CaseAnalysisModal } from './components/CaseAnalysisModal';
 import { RiskDossierModal } from './components/RiskDossierModal';
 import { ExportReportsModal } from './components/ExportReportsModal';
 import { SubjectsView } from './components/SubjectsView';
+import { SectionTabs } from './components/SectionTabs';
 import { RiskEvaluationModal } from './components/RiskEvaluationModal';
 
 import { 
@@ -120,8 +121,11 @@ export default function App() {
     setIsExportModalOpen(true);
   };
 
+  // Pantalla desde la que se abrió el asistente: al cerrarlo se vuelve ahí (Inicio, Sujetos o Expedientes).
+  const returnTab = useRef<string>('monitoreo');
   const handleOpenNewEvaluationModal = (subjectData?: typeof initialEvaluationSubject) => {
     setInitialEvaluationSubject(subjectData || null);
+    if (!isNewEvaluationModalOpen) returnTab.current = currentTab === 'dashboard' || currentTab === 'sujetos' ? currentTab : 'monitoreo';
     setCurrentTab('monitoreo');
     window.location.hash = '/evaluacion/';
     setIsNewEvaluationModalOpen(true);
@@ -130,35 +134,26 @@ export default function App() {
   const handleCloseNewEvaluationModal = () => {
     setIsNewEvaluationModalOpen(false);
     setInitialEvaluationSubject(null);
-    setCurrentTab('monitoreo');
-    if (/evaluacion|simulador/.test(window.location.hash)) {
-      window.history.replaceState(null, '', '#/expedientes/');
-    }
+    handleTabChange(returnTab.current);
+    returnTab.current = 'monitoreo';
   };
 
   // Sync route with URL hash on mount & change
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash;
-      if(hash.includes('dashboard')||!hash){setCurrentTab('dashboard');setIsNewEvaluationModalOpen(false);
-      } else if(hash.includes('usuarios')){setCurrentTab('usuarios');setIsNewEvaluationModalOpen(false);
-      } else if (hash.includes('simulador') || hash.includes('evaluacion')) {
-        setCurrentTab('monitoreo');
-        setIsNewEvaluationModalOpen(true);
-        if(hash.includes('dashboard')||!hash){setCurrentTab('dashboard');setIsNewEvaluationModalOpen(false);
-      } else if(hash.includes('usuarios')){setCurrentTab('usuarios');setIsNewEvaluationModalOpen(false);
-      } else if (hash.includes('simulador')) window.history.replaceState(null, '', '#/evaluacion/');
-      } else if (hash.includes('ajustes')) {
-        setCurrentTab('ajustes');setIsNewEvaluationModalOpen(false);
-      } else if (hash.includes('sujetos')) {
-        setCurrentTab('sujetos');setIsNewEvaluationModalOpen(false);
-      } else if (hash.includes('normativa') || hash.includes('parametros') || hash.includes('matriz') || hash.includes('umbrales')) {
-        setCurrentTab('normativa');
-        setIsNewEvaluationModalOpen(false);
-      } else {
-        setCurrentTab('monitoreo');
-        setIsNewEvaluationModalOpen(false);
-      }
+      const go = (tab: string, openEvaluation = false) => {
+        setCurrentTab(tab);
+        setIsNewEvaluationModalOpen(openEvaluation);
+      };
+      if (hash.includes('simulador')) window.history.replaceState(null, '', '#/evaluacion/');
+      if (hash.includes('dashboard') || !hash) go('dashboard');
+      else if (hash.includes('usuarios')) go('usuarios');
+      else if (hash.includes('simulador') || hash.includes('evaluacion')) go('monitoreo', true);
+      else if (hash.includes('ajustes')) go('ajustes');
+      else if (hash.includes('sujetos')) go('sujetos');
+      else if (/normativa|parametros|matriz|umbrales/.test(hash)) go('normativa');
+      else go('monitoreo');
     };
 
     handleHashChange();
@@ -256,7 +251,8 @@ export default function App() {
       {loading && <p className="p-8 text-slate-500" role="status">Cargando datos…</p>}
       {/* Main Content View with Clean Layout */}
       <main data-section={currentTab} id="contenido" className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-        {loaded&&!loading&&currentTab==='dashboard'&&dashboard&&<DashboardView data={dashboard} onNavigate={handleTabChange} canOpen={allow('expedientes')}/>}
+        <SectionTabs user={user} currentTab={currentTab} onChange={handleTabChange}/>
+        {loaded&&!loading&&currentTab==='dashboard'&&dashboard&&<DashboardView data={dashboard} onNavigate={handleTabChange} canOpen={allow('expedientes')} records={records} canCreate={allow('expedientes',true)} onNewEvaluation={()=>handleOpenNewEvaluationModal()} onOpenCase={setSelectedDossier}/>}
         {loaded&&!loading&&currentTab==='usuarios'&&user?.role==='SUPERADMIN'&&<UsersView/>}
         {loaded&&!loading&&!permitted&&<p>No tenés módulos asignados. Consultá al superadministrador.</p>}
         {loaded && !loading && allow('expedientes') && currentTab === 'monitoreo' && (
@@ -270,11 +266,11 @@ export default function App() {
           />
         )}
 
-        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset disabled={!allow('ajustes',true)}><SystemSettingsView key={loaded?'loaded':'initial'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}}/></fieldset>}
+        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset className="min-w-0" disabled={!allow('ajustes',true)}><SystemSettingsView key={loaded?'loaded':'initial'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}}/></fieldset>}
         {loaded && !loading && currentTab==='sujetos' && allow('sujetos') && <SubjectsView canEdit={allow('sujetos',true)} canEvaluate={allow('expedientes',true)} criteria={criteria} subjects={subjects} records={records} onSave={handleSaveSubject} onEvaluate={handleOpenNewEvaluationModal} onViewDossier={setSelectedDossier}/>}
 
         {loaded && !loading && allow('riesgo') && (currentTab === 'normativa' || currentTab === 'parametros' || currentTab === 'matriz' || currentTab === 'umbrales') && (
-          <fieldset disabled={!allow('riesgo',true)}><NormativaMatrizView
+          <fieldset className="min-w-0" disabled={!allow('riesgo',true)}><NormativaMatrizView
             onDeleteCriterion={user?.role==='SUPERADMIN'?handleDeleteCriterion:undefined}
             deleting={saving}
             thresholds={thresholds}

@@ -90,6 +90,9 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   const [validationError, setValidationError] = useState('');
 
   const [savedRecord, setSavedRecord] = useState<EvaluationRecord | null>(null);
+  // Asistente de 3 pasos: 1 Sujeto, 2 Operación, 3 Resultado.
+  const [step,setStep]=useState<1|2|3>(1);
+  const hid=(visibleIn:1|2|3)=>step===visibleIn?'':'hidden';
 
   const resetForm = () => {
     setRequestId(crypto.randomUUID());setSubjectUpdatedAt(initialSubjectData?.updatedAt);
@@ -106,7 +109,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     setActivity(initialSubjectData?.activity || '');
     setOperationType('COBRO_PREMIO'); setAmountARS(0); setDepartment('');
     setChannelName(''); setNotes(''); setSelectedCriteriaIds(initialSubjectData?.clientCriteriaIds || []);
-    setSavedRecord(null); setValidationError('');
+    setSavedRecord(null); setValidationError('');setStep(initialSubjectData?.id?2:1);
   };
   useEffect(() => { if (isOpen) resetForm(); }, [initialSubjectData, isOpen]);
 
@@ -116,7 +119,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     setRequestId(crypto.randomUUID());
     setSubjectId(savedRecord.subjectId || '');
     setAmountARS(0);setDepartment('');setChannelName('');setNotes('');setSelectedCriteriaIds(prev=>prev.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE'));
-    setCriterionCategory('PRODUCTO');setProfileAssessment(emptyProfile);setOperationDate(currentLocalDate());setConditionConfirmed(false);setSavedRecord(null);setValidationError('');
+    setCriterionCategory('PRODUCTO');setProfileAssessment(emptyProfile);setOperationDate(currentLocalDate());setConditionConfirmed(false);setSavedRecord(null);setValidationError('');setStep(2);
   };
 
   // Toggle criterion selection
@@ -135,6 +138,23 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
     return calculateRisk(criteria, factorWeights, selectedCriteriaIds, isPep, amountARS,thresholds,{operationAt:operationDate&&Number.isFinite(Date.parse(operationDate))?new Date(operationDate).toISOString():undefined,subjectType,records:records.filter(r=>r.subjectId===subjectId)});
   }, [criteria, factorWeights, selectedCriteriaIds, isPep, amountARS,thresholds,operationDate,subjectType,records,subjectId]);
 
+  const validateStep=(s:1|2):string=>{
+    if(s===1){
+      if(!subjectId)return 'Seleccioná un sujeto registrado o creá su ficha con «Nuevo sujeto».';
+      if(!selectedCriteriaIds.some(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE'))return 'Completá los factores personales desde «Editar ficha del sujeto».';
+      if(!conditionConfirmed)return 'Confirmá la condición del sujeto para esta operación.';
+      if(isPep && !pepDetails.trim())return 'Indicá el cargo o condición PEP evaluada.';
+      return '';
+    }
+    if(!operationDate || !Number.isFinite(new Date(operationDate).getTime()))return 'Indicá la fecha y hora de la operación.';
+    if(!department.trim() || !channelName.trim() || !Number.isFinite(amountARS) || amountARS<=0)return 'Completá departamento, sala y un monto mayor a cero.';
+    const has=(category:RiskCriterion['category'])=>selectedCriteriaIds.some(id=>criteria.find(c=>c.id===id)?.category===category);
+    if(!has('PRODUCTO')||!has('CANAL')||!has('GEOGRAFIA'))return 'Elegí al menos un criterio de producto o servicio, uno de canal y uno de geografía.';
+    return '';
+  };
+  const goNext=()=>{if(step===3)return;const msg=validateStep(step);setValidationError(msg);if(!msg)setStep((step+1) as 2|3);};
+  const goBack=()=>{setValidationError('');if(step>1)setStep((step-1) as 1|2);};
+  const stepTitles=['Sujeto','Operación','Resultado'] as const;
   const handleSave = async () => {
     if (savedRecord || isSaving) return;
     if(!subjectId){setValidationError('Seleccioná un sujeto registrado o creá su ficha con «Nuevo sujeto».');return;}
@@ -195,7 +215,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/30 overflow-y-auto">
       {canEditSubject&&editingSubject&&<SubjectEditor criteria={criteria} initial={editingSubject} onClose={()=>setEditingSubject(null)} onSave={async data=>{const saved=await onSaveSubject(data);selectSubject(saved);setEditingSubject(null)}}/>}
-      <div role="dialog" aria-modal={!editingSubject} aria-hidden={!!editingSubject} inert={!!editingSubject} aria-label="Nueva operación" className="w-full max-w-5xl bg-white rounded-2xl sm:rounded-xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh] my-auto">
+      <div role="dialog" aria-modal={!editingSubject} aria-hidden={!!editingSubject} inert={!!editingSubject} aria-label="Nueva evaluación" className="w-full max-w-5xl bg-white rounded-2xl sm:rounded-xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh] my-auto">
         
         {/* Sticky Header */}
         <div className="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
@@ -206,11 +226,11 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
-                  Nueva operación
+                  Nueva evaluación
                 </h3>
               </div>
               <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
-                Escribí el nombre, seleccioná la persona y completá la operación.
+                Tres pasos: elegí el sujeto, cargá la operación y revisá el resultado.
               </p>
             </div>
           </div>
@@ -226,6 +246,8 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
 
         {/* Scrollable Modal Content */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1">
+          {!savedRecord&&<ol aria-label="Pasos de la evaluación" className="flex flex-wrap gap-x-6 gap-y-2">{stepTitles.map((t,i)=>{const n=i+1,done=n<step,current=n===step;return <li key={t} aria-current={current?'step':undefined} className={`flex items-center gap-2 text-sm ${current?'font-bold text-slate-900':done?'font-medium text-teal-800':'font-medium text-slate-600'}`}><span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${current?'bg-teal-700 text-white':done?'bg-teal-100 text-teal-800':'border-2 border-slate-400 text-slate-700'}`}>{done?<Check className="w-4 h-4"/>:n}</span>{t}</li>;})}</ol>}
+          {!savedRecord&&step<3&&validationError&&<p role="alert" className="text-sm text-rose-800 bg-rose-50 border border-rose-200 rounded-xl p-3">{validationError}</p>}
           {savedRecord ? (
             /* Success confirmation card */
             <div className="p-6 sm:p-8 bg-emerald-50 border-2 border-emerald-300 rounded-2xl text-center space-y-4 my-auto">
@@ -277,28 +299,28 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               
               {/* Left Column: Form Fields */}
-              <div className="lg:col-span-7 space-y-5">
+              <div className={`lg:col-span-7 space-y-5 ${step===3?'hidden':''}`}>
                 
                 {/* 1. Identification and Amount */}
                 <div className="bg-slate-50/70 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-4">
                   <div className="flex items-center gap-2 border-b border-slate-200 pb-2.5">
                     <span className="w-5 h-5 rounded-full bg-teal-600 text-white font-bold text-xs flex items-center justify-center">
-                      1
+                      {step}
                     </span>
                     <h4 className="text-sm font-bold text-slate-900">
-                      Datos de esta operación
+                      {step===1?'¿De quién es la operación?':'Datos de esta operación'}
                     </h4>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    <SubjectNameField value={subjectName} linked={!!subjectId} onSelect={selectSubject} onChange={name=>{
+                    <div className={`sm:col-span-2 ${hid(1)}`}><SubjectNameField value={subjectName} linked={!!subjectId} onSelect={selectSubject} onChange={name=>{
                       setSubjectName(name);
                       if(subjectId){setSubjectId('');setSubjectType('PERSONA_FISICA');setTaxId('');setAddress('');setEmail('');setPhone('');setActivity('');setIsPep(false);setPepDetails('');setSelectedCriteriaIds([]);setProfileAssessment(emptyProfile);setConditionConfirmed(false);}
-                    }}/>
-                    {subjectId&&<div className="sm:col-span-2 text-xs text-slate-500"><span className="font-medium text-teal-700">Ficha vinculada · {taxId}</span><details className="mt-2"><summary>Ver datos personales</summary><div className="mt-2 space-y-1"><p>{address||'Dirección pendiente'}</p><p>{email||'Correo pendiente'}</p><p>{phone||'Teléfono pendiente'}</p></div></details></div>}
-                    {canEditSubject&&<div className="sm:col-span-2 flex gap-3"><button type="button" className="text-xs font-medium text-teal-700" onClick={()=>setEditingSubject(subjectId?{id:subjectId,updatedAt:subjectUpdatedAt,subjectName,taxId,subjectType,address,email,phone,activity,pepStatus:isPep,pepDetails,clientCriteriaIds:selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')}:{subjectName})}>{subjectId?'Editar ficha del sujeto':'Nuevo sujeto'}</button></div>}
-                    <label className="field-label sm:col-span-2">Fecha y hora de la operación<input aria-label="Fecha y hora de la operación" type="datetime-local" value={operationDate} onChange={e=>setOperationDate(e.target.value)}/></label>
-                    <div>
+                    }}/></div>
+                    {subjectId&&<div className={`sm:col-span-2 text-xs text-slate-500 ${hid(1)}`}><span className="font-medium text-teal-700">Ficha vinculada · {taxId}</span><details className="mt-2"><summary>Ver datos personales</summary><div className="mt-2 space-y-1"><p>{address||'Dirección pendiente'}</p><p>{email||'Correo pendiente'}</p><p>{phone||'Teléfono pendiente'}</p></div></details></div>}
+                    {canEditSubject&&<div className={`sm:col-span-2 flex gap-3 ${hid(1)}`}><button type="button" className="text-xs font-medium text-teal-700" onClick={()=>setEditingSubject(subjectId?{id:subjectId,updatedAt:subjectUpdatedAt,subjectName,taxId,subjectType,address,email,phone,activity,pepStatus:isPep,pepDetails,clientCriteriaIds:selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE')}:{subjectName})}>{subjectId?'Editar ficha del sujeto':'Nuevo sujeto'}</button></div>}
+                    <label style={step===2?undefined:{display:'none'}} className="field-label sm:col-span-2">Fecha y hora de la operación<input aria-label="Fecha y hora de la operación" type="datetime-local" value={operationDate} onChange={e=>setOperationDate(e.target.value)}/></label>
+                    <div className={hid(2)}>
                       <label className="block text-xs font-bold text-slate-700 mb-1">Tipo de Operación</label>
                       <select
                         value={operationType}
@@ -313,7 +335,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                       </select>
                     </div>
 
-                    <div>
+                    <div className={hid(2)}>
                       <label className="block text-xs font-bold text-slate-700 mb-1">Monto de la Operación ($ ARS)</label>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
@@ -334,15 +356,15 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                     </div>
                   </div>
 
-                  {subjectId&&<div className="text-xs text-slate-600 bg-white border border-slate-200 rounded-lg p-3 space-y-1"><p>Tipo: {subjectType==='PERSONA_FISICA'?'Persona física':subjectType==='PERSONA_JURIDICA'?'Persona jurídica':'Agencia'}</p><p>Actividad: {activity}</p><p>Condición PEP: {isPep?`Sí · ${pepDetails}`:'No'}</p><p>Factores personales: {selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE').map(id=>criteria.find(c=>c.id===id)?.name).join(' · ')||'Pendientes en la ficha del sujeto'}</p></div>}
-                  <label className="flex items-start gap-2 text-xs text-slate-600"><input type="checkbox" checked={conditionConfirmed} onChange={e=>setConditionConfirmed(e.target.checked)} className="mt-0.5"/>Revisé la ficha del sujeto que se utilizará en este expediente.</label>
-                  <details className="surface p-3 space-y-3"><summary className="text-xs text-teal-700">Perfil transaccional, origen y destino</summary><div className="space-y-3 mt-3">
+                  {subjectId&&<div className={`text-xs text-slate-600 bg-white border border-slate-200 rounded-lg p-3 space-y-1 ${hid(1)}`}><p>Tipo: {subjectType==='PERSONA_FISICA'?'Persona física':subjectType==='PERSONA_JURIDICA'?'Persona jurídica':'Agencia'}</p><p>Actividad: {activity}</p><p>Condición PEP: {isPep?`Sí · ${pepDetails}`:'No'}</p><p>Factores personales: {selectedCriteriaIds.filter(id=>criteria.find(c=>c.id===id)?.category==='CLIENTE').map(id=>criteria.find(c=>c.id===id)?.name).join(' · ')||'Pendientes en la ficha del sujeto'}</p></div>}
+                  <label className={`flex items-start gap-2 text-xs text-slate-600 ${hid(1)}`}><input type="checkbox" checked={conditionConfirmed} onChange={e=>setConditionConfirmed(e.target.checked)} className="mt-0.5"/>Revisé la ficha del sujeto que se utilizará en este expediente.</label>
+                  <details className={`surface p-3 space-y-3 ${hid(2)}`}><summary className="text-xs text-teal-700">Perfil transaccional, origen y destino</summary><div className="space-y-3 mt-3">
                     <label className="field-label">Perfil transaccional considerado<textarea rows={2} value={profileAssessment.profileSummary} onChange={e=>setProfileAssessment(p=>({...p,profileSummary:e.target.value}))} placeholder="Actividad, ingresos declarados, antecedentes y documentación de respaldo" className="border border-slate-200 rounded-lg p-2 text-sm"/></label>
                     <label className="field-label">Comparación con el perfil<select value={profileAssessment.comparison} onChange={e=>setProfileAssessment(p=>({...p,comparison:e.target.value as ProfileAssessment['comparison']}))}><option value="SIN_DATOS">Información insuficiente</option><option value="COMPATIBLE">Compatible según revisión inicial</option><option value="DESVIACION">Se detecta un desvío para analizar</option></select></label>
                     {([['comparisonReason','Fundamento de la comparación'],['originDeclared','Origen declarado de fondos'],['destinationDeclared','Destino declarado'],['beneficialOwner','Beneficiario final / terceros, si corresponde']] as const).map(([key,label])=><label className="field-label" key={key}>{label}<input value={profileAssessment[key]} onChange={e=>setProfileAssessment(p=>({...p,[key]:e.target.value}))}/></label>)}
                   </div></details>
                   {/* Department & Channel */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3.5 ${hid(2)}`}>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">Departamento (Entre Ríos)</label>
                       <select
@@ -378,7 +400,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
                 </div>
 
                 {/* 2. Factores de Riesgo / Matriz Selection */}
-                <div className="bg-slate-50/70 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-3">
+                <div className={`bg-slate-50/70 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-3 ${hid(2)}`}>
                   <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
                     <div className="flex items-center gap-2">
                       <span className="w-5 h-5 rounded-full bg-teal-600 text-white font-bold text-xs flex items-center justify-center">
@@ -448,7 +470,7 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
               </div>
 
               {/* Right Column: Scoring Verdict & Save Action */}
-              <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-0">
+              <div className={step===3?'lg:col-span-12 space-y-4 max-w-2xl w-full mx-auto':'hidden'}>
                 
                 <div className="bg-white border-2 border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
@@ -557,16 +579,19 @@ export const RiskEvaluationModal: React.FC<RiskEvaluationModalProps> = ({
 
         {/* Sticky Footer */}
         <div className="px-4 sm:px-6 py-3 border-t border-slate-100 bg-white flex items-center justify-between shrink-0 text-xs text-slate-500">
-          <div className="hidden sm:block">
-            Expediente vinculado al sujeto registrado
+          <div>
+            {!savedRecord&&step>1&&<button type="button" onClick={goBack} className="px-4 py-2 rounded-xl text-teal-800 hover:bg-slate-100 font-semibold text-sm cursor-pointer">Atrás</button>}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer ml-auto"
-          >
-            Cerrar
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold text-sm cursor-pointer"
+            >
+              Cerrar
+            </button>
+            {!savedRecord&&step<3&&<button type="button" onClick={goNext} className="px-5 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-sm cursor-pointer">{step===1?'Continuar':'Calcular riesgo'}</button>}
+          </div>
         </div>
 
       </div>

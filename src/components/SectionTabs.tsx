@@ -1,0 +1,16 @@
+import React from 'react';
+import {can,type AccessUser} from '../access';
+type Tab={id:string;label:string};
+const GROUPS:Record<string,{label:string;tabs:Tab[]}>={
+ casos:{label:'Tipo de caso',tabs:[{id:'monitoreo',label:'Expedientes'},{id:'sujetos',label:'Sujetos'}]},
+ config:{label:'Secciones de configuración',tabs:[{id:'normativa',label:'Parámetros de riesgo'},{id:'ajustes',label:'Organización y ajustes'},{id:'usuarios',label:'Usuarios y permisos'}]},
+};
+const MODULE:Record<string,Parameters<typeof can>[1]|'users'>={monitoreo:'expedientes',sujetos:'sujetos',normativa:'riesgo',ajustes:'ajustes',usuarios:'users'};
+export const groupOf=(tab:string)=>['monitoreo','sujetos'].includes(tab)?'casos':['normativa','parametros','matriz','umbrales','ajustes','usuarios'].includes(tab)?'config':null;
+export const allowedTab=(user:AccessUser|null,id:string)=>MODULE[id]==='users'?user?.role==='SUPERADMIN':can(user,MODULE[id] as Parameters<typeof can>[1]);
+export function SectionTabs({user,currentTab,onChange}:{user:AccessUser|null;currentTab:string;onChange:(tab:string)=>void}){
+ const key=groupOf(currentTab);if(!key)return null;
+ const group=GROUPS[key],tabs=group.tabs.filter(t=>allowedTab(user,t.id));if(tabs.length<2)return null;
+ const active=['parametros','matriz','umbrales'].includes(currentTab)?'normativa':currentTab;
+ return <div role="tablist" aria-label={group.label} className="flex flex-wrap gap-1 border-b border-slate-200 -mb-2">{tabs.map(t=><button key={t.id} role="tab" type="button" aria-selected={active===t.id} onClick={()=>onChange(t.id)} className={`px-4 py-2.5 text-sm cursor-pointer border-b-2 -mb-px ${active===t.id?'font-bold text-slate-900 border-teal-700':'font-medium text-slate-600 border-transparent hover:text-slate-900'}`}>{t.label}</button>)}</div>;
+}

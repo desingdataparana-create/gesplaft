@@ -6,6 +6,7 @@ import {UsersView} from './components/UsersView';
 import {DashboardView,type DashboardData} from './components/DashboardView';
 import { SystemSettingsView, type ThemeMode } from './components/SystemSettingsView';
 import { DEFAULT_ORGANIZATION } from './data/organization';
+import { ListsProvider } from './lists';
 import type { OrganizationSettings } from './types';
 import { request } from './utils/api';
 import React, { useState, useEffect, useRef } from 'react';
@@ -92,7 +93,6 @@ export default function App() {
 
   useEffect(() => {
     const closeModal = selectedAnalysis ? ()=>setSelectedAnalysis(null) : isAddModalOpen ? () => setIsAddModalOpen(false)
-      : isNewEvaluationModalOpen ? handleCloseNewEvaluationModal
       : selectedDossier ? () => setSelectedDossier(null)
       : isExportModalOpen ? () => setIsExportModalOpen(false) : null;
     if (!closeModal) return;
@@ -114,7 +114,7 @@ export default function App() {
     };
     document.addEventListener('keydown', onKey);
     return () => { clearTimeout(timer); document.body.style.overflow = overflow; document.removeEventListener('keydown', onKey); previous?.focus(); };
-  }, [isAddModalOpen, isNewEvaluationModalOpen, selectedDossier, isExportModalOpen, selectedAnalysis]);
+  }, [isAddModalOpen, selectedDossier, isExportModalOpen, selectedAnalysis]);
 
   const handleOpenExportModal = (initialType: 'EXPEDIENTES' | 'PARAMETROS' | 'UMBRALES' | 'ESTADISTICAS' = 'EXPEDIENTES') => {
     setExportInitialType(initialType);
@@ -231,6 +231,7 @@ export default function App() {
   if(!loading&&!user)return <div className="login-shell"><section className="surface p-8 max-w-md"><span className="workspace-kicker">IAFAS · PLA/FT</span><h1 className="text-2xl font-semibold my-4">Acceso al sistema</h1><p className="text-sm mb-6">{serverError||'Iniciá sesión con una cuenta habilitada por el superadministrador.'}</p><a className="button-primary" target="_top" href={sitePath('/signin-with-chatgpt?return_to=%2F')}>{passwordAuth()?'Iniciar sesión':'Iniciar sesión con ChatGPT'}</a><a className="block mt-5 text-sm underline" target="_top" href={sitePath('/signout-with-chatgpt?return_to=%2F')}>Cambiar cuenta</a></section></div>;
   const evaluationOpen=isNewEvaluationModalOpen&&!loading&&!serverError&&allow('expedientes',true);
   return (
+    <ListsProvider value={organization.lists}>
     <div className="app-shell minimal-ui workspace-ui min-h-screen bg-[#FAFBFC] text-slate-800 flex flex-col font-sans antialiased selection:bg-sky-500 selection:text-white">
       
       {/* Top Header Bar */}
@@ -293,7 +294,7 @@ export default function App() {
           />
         )}
 
-        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset className="min-w-0" disabled={!allow('ajustes',true)}><SystemSettingsView key={loaded?'loaded':'initial'} canBackup={user?.role==='SUPERADMIN'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}}/></fieldset>}
+        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset className="min-w-0" disabled={!allow('ajustes',true)}><SystemSettingsView key={loaded?'loaded':'initial'} canBackup={user?.role==='SUPERADMIN'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}} onSaveLists={async lists=>{const result=await request<{organization:OrganizationSettings}>('saveLists',lists);setOrganization(result.organization)}}/></fieldset>}
         {loaded && !loading && currentTab==='sujetos' && allow('sujetos') && <SubjectsView canEdit={allow('sujetos',true)} canEvaluate={allow('expedientes',true)} criteria={criteria} subjects={subjects} records={records} onSave={handleSaveSubject} onEvaluate={handleOpenNewEvaluationModal} onViewDossier={setSelectedDossier}/>}
 
         {loaded && !loading && allow('riesgo') && (currentTab === 'normativa' || currentTab === 'parametros' || currentTab === 'matriz' || currentTab === 'umbrales') && (
@@ -371,5 +372,6 @@ export default function App() {
       />
 
     </div>
+    </ListsProvider>
   );
 }

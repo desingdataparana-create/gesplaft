@@ -1,3 +1,5 @@
+import {ListInput,ListOptions} from '../lists';
+import type {ListKey} from '../data/lists';
 import React,{useState,useEffect} from 'react';
 import {Search,Plus,X,ArrowRight,UserRound,MapPin,Mail,Phone,Pencil} from 'lucide-react';
 import type {Subject,SubjectDetails,EvaluationRecord,RiskCriterion} from '../types';
@@ -34,12 +36,12 @@ export function SubjectEditor({initial,onSave,onClose,criteria}:{criteria:RiskCr
  const d=form.details||{};
  const setD=(key:keyof SubjectDetails,value:string)=>setForm(prev=>({...prev,details:{...prev.details,[key]:value}}));
  const fisica=form.subjectType==='PERSONA_FISICA';
- const text=(key:Extract<keyof SubjectDetails,string>,label:string,opts:{required?:boolean;span?:boolean;hint?:string;max?:number;mode?:'numeric'}={})=><label className={`field-label ${opts.span?'md:col-span-2':''}`} key={key}>{label}{opts.required?' *':''}<input required={opts.required} maxLength={opts.max||120} inputMode={opts.mode} value={(d[key] as string)||''} onChange={e=>setD(key,e.target.value)}/>{opts.hint&&<span className="text-[11px] font-normal text-slate-500">{opts.hint}</span>}</label>;
+ const text=(key:Extract<keyof SubjectDetails,string>,label:string,opts:{required?:boolean;span?:boolean;hint?:string;max?:number;mode?:'numeric';list?:ListKey}={})=><label className={`field-label ${opts.span?'md:col-span-2':''}`} key={key}>{label}{opts.required?' *':''}{opts.list?<ListInput listKey={opts.list} required={opts.required} maxLength={opts.max||120} value={(d[key] as string)||''} onChange={v=>setD(key,v)}/>:<input required={opts.required} maxLength={opts.max||120} inputMode={opts.mode} value={(d[key] as string)||''} onChange={e=>setD(key,e.target.value)}/>}{opts.hint&&<span className="text-[11px] font-normal text-slate-500">{opts.hint}</span>}</label>;
  const section=(title:string,children:React.ReactNode)=><fieldset className="space-y-3"><legend className="text-sm font-semibold text-slate-800 w-full border-b border-slate-100 pb-1.5 mb-1">{title}</legend><div className="grid md:grid-cols-3 gap-x-4 gap-y-3">{children}</div></fieldset>;
  const submit=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);setError('');try{
   const address=[[d.street,d.streetNumber].filter(Boolean).join(' '),d.floor&&`Piso ${d.floor}`,d.apartment&&`Dto. ${d.apartment}`,d.postalCode&&`CP ${d.postalCode}`,d.locality,d.province,d.country].filter(Boolean).join(', ');
   await onSave({...form,address:address||form.address});}catch(err){setError((err as Error).message)}finally{setBusy(false)}};
- return <div className="fixed inset-0 z-[60] bg-slate-900/30 flex justify-center items-center p-3"><form data-subject-editor role="dialog" aria-modal="true" aria-label={initial.id?'Editar sujeto':'Nuevo sujeto'} className="bg-white w-full max-w-4xl rounded-xl max-h-[94vh] flex flex-col" onSubmit={submit}><header className="px-6 py-4 flex items-center justify-between border-b border-slate-100"><div><h2 className="font-semibold">{initial.id?'Editar sujeto':'Nuevo sujeto'}</h2><p className="text-xs text-slate-500 mt-0.5">Estos datos se cargan una sola vez y se reutilizan en cada operación. Los campos con * son obligatorios.</p></div><button type="button" disabled={busy} onClick={onClose} aria-label="Cerrar edición de sujeto"><X size={18}/></button></header>
+ return <div className="fixed inset-0 z-[60] bg-slate-900/30 flex justify-center items-center p-3 overflow-y-auto"><form data-subject-editor role="dialog" aria-modal="true" aria-label={initial.id?'Editar sujeto':'Nuevo sujeto'} className="bg-white w-full max-w-4xl rounded-xl max-h-[94dvh] flex flex-col" onSubmit={submit}><header className="px-6 py-4 flex items-center justify-between border-b border-slate-100"><div><h2 className="font-semibold">{initial.id?'Editar sujeto':'Nuevo sujeto'}</h2><p className="text-xs text-slate-500 mt-0.5">Estos datos se cargan una sola vez y se reutilizan en cada operación. Los campos con * son obligatorios.</p></div><button type="button" disabled={busy} onClick={onClose} aria-label="Cerrar edición de sujeto"><X size={18}/></button></header>
  <div className="p-6 overflow-y-auto space-y-6">
   {section('Identificación',<>
    <label className="field-label">Tipo de sujeto<select value={form.subjectType} onChange={e=>set('subjectType',e.target.value)}><option value="PERSONA_FISICA">Persona física / humana</option><option value="PERSONA_JURIDICA">Persona jurídica</option><option value="AGENCIA">Agencia</option></select></label>
@@ -48,8 +50,8 @@ export function SubjectEditor({initial,onSave,onClose,criteria}:{criteria:RiskCr
    <label className="field-label">Número de documento *<input required maxLength={20} readOnly={!!initial.id} value={form.taxId||''} onChange={e=>set('taxId',e.target.value)}/><span className="text-[11px] font-normal text-slate-500">Sin puntos. {initial.id?'No se puede cambiar.':'Con este número se busca al sujeto en las próximas operaciones.'}</span></label>
    {text('cuit','CUIT / CUIL',{max:13,mode:'numeric',hint:'Solo números, 11 dígitos. Opcional.'})}
    {fisica&&<label className="field-label">Fecha de nacimiento<input type="date" min="1900-01-01" max={new Date().toISOString().slice(0,10)} value={d.birthDate||''} onChange={e=>setD('birthDate',e.target.value)}/></label>}
-   {text('nationality','Nacionalidad',{max:80})}
-   {fisica&&<label className="field-label">Estado civil<select value={d.maritalStatus||''} onChange={e=>setD('maritalStatus',e.target.value)}><option value="">Sin informar</option><option>Soltero/a</option><option>Casado/a</option><option>Unión convivencial</option><option>Divorciado/a</option><option>Viudo/a</option></select></label>}
+   {text('nationality','Nacionalidad',{max:80,list:'nationalities'})}
+   {fisica&&<label className="field-label">Estado civil<select value={d.maritalStatus||''} onChange={e=>setD('maritalStatus',e.target.value)}><option value="">Sin informar</option><ListOptions listKey="maritalStatuses" current={d.maritalStatus}/></select></label>}
    {text('foreignTaxId','Identificación tributaria (extranjeros)',{max:40,hint:'Solo si el sujeto es extranjero. Opcional.'})}
   </>)}
   {section('Domicilio legal',<>
@@ -59,13 +61,13 @@ export function SubjectEditor({initial,onSave,onClose,criteria}:{criteria:RiskCr
    {text('apartment','Departamento',{max:20})}
    {text('postalCode','Código postal',{max:20})}
    {text('locality','Localidad',{required:true})}
-   {text('province','Provincia',{required:true,max:80})}
+   {text('province','Provincia',{required:true,max:80,list:'provinces'})}
    {text('country','País',{required:true,max:80})}
   </>)}
   {section('Contacto y actividad',<>
    <label className="field-label">Teléfono *<input required type="tel" maxLength={40} value={form.phone||''} onChange={e=>set('phone',e.target.value)}/></label>
    <label className="field-label">Correo electrónico *<input required type="email" maxLength={200} value={form.email||''} onChange={e=>set('email',e.target.value)}/></label>
-   <label className="field-label">Actividad u ocupación *<input required maxLength={200} value={form.activity||''} onChange={e=>set('activity',e.target.value)}/></label>
+   <label className="field-label">Actividad u ocupación *<ListInput listKey="activities" required maxLength={200} value={form.activity||''} onChange={v=>set('activity',v)}/></label>
    <label className="flex gap-2 items-center text-sm text-slate-700 md:col-span-3"><input type="checkbox" checked={form.pepStatus||false} onChange={e=>set('pepStatus',e.target.checked)}/>Persona expuesta políticamente (PEP)</label>
    {form.pepStatus&&<label className="field-label md:col-span-3">Cargo, organismo o vínculo PEP *<input required value={form.pepDetails||''} onChange={e=>set('pepDetails',e.target.value)}/></label>}
   </>)}

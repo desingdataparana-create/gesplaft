@@ -185,4 +185,5 @@ export interface OrganizationSettings {
  phone:string;
  website:string;
  logo:string;
+ lists?:import('./data/lists').ListsMap;
 }

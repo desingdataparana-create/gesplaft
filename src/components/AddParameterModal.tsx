@@ -91,7 +91,7 @@ export const AddParameterModal: React.FC<AddParameterModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/30 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl sm:rounded-xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto flex flex-col max-h-[94vh] sm:max-h-[90vh]">
+      <div className="bg-white rounded-2xl sm:rounded-xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto flex flex-col max-h-[94dvh] sm:max-h-[90dvh]">
         
         {/* Modal Header */}
         <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white">

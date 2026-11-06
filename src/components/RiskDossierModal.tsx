@@ -38,7 +38,7 @@ export const RiskDossierModal: React.FC<RiskDossierModalProps> = ({
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Ficha del expediente" data-dossier className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto print:p-0 print:bg-white">
-      <div className="bg-white rounded-2xl sm:rounded-3xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh] my-auto print:max-h-none print:border-none print:shadow-none print:my-0">
+      <div className="bg-white rounded-2xl sm:rounded-3xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96dvh] sm:max-h-[92dvh] my-auto print:max-h-none print:border-none print:shadow-none print:my-0">
         
         {/* Modal Action Bar (Sticky, Hidden on print) */}
         <div className="bg-white border-b border-slate-100 px-4 sm:px-6 py-3.5 flex items-center justify-between shrink-0 print:hidden">

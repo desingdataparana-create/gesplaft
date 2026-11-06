@@ -28,7 +28,7 @@ export function ExportReportsModal({organization,isOpen,onClose,records,criteria
   const downloadPremios=async()=>{setBuilding(true);try{const bytes=await buildPremiosXls(rows,subjects),blob=new Blob([bytes as BlobPart],{type:'application/vnd.ms-excel'}),url=URL.createObjectURL(blob),a=document.createElement('a'),name=`Premios_${stamp}.xls`;a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);setDone(name)}finally{setBuilding(false)}};
   const sel='w-full p-3 border border-slate-300 rounded-lg bg-white text-sm';
   const link='text-teal-800 font-semibold underline underline-offset-2';
-  return <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-3 overflow-y-auto"><div role="dialog" aria-modal="true" aria-label="Informes" className="bg-white rounded-xl w-full max-w-xl max-h-[94vh] flex flex-col">
+  return <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-3 overflow-y-auto"><div role="dialog" aria-modal="true" aria-label="Informes" className="bg-white rounded-xl w-full max-w-xl max-h-[94dvh] flex flex-col">
     <header className="p-5 border-b border-slate-100 flex justify-between items-start"><div><h2 className="font-semibold text-lg">Informes</h2><p className="text-sm text-slate-500 mt-1">Descargá el listado de expedientes para presentarlo o analizarlo.</p></div><button type="button" onClick={onClose} aria-label="Cerrar informes"><X size={18}/></button></header>
     <div className="overflow-y-auto p-5 space-y-4">
       <div className="grid sm:grid-cols-3 gap-3">

@@ -1,6 +1,7 @@
 import {access,requireModule} from '../../access';
 import {can} from '../../../src/access';
 import { DEFAULT_ORGANIZATION } from '../../../src/data/organization';
+import { LIST_KEYS, cleanList } from '../../../src/data/lists';
 import { and, eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '../../../db/index';
@@ -46,7 +47,7 @@ export async function GET(req:Request){try{
 export async function POST(req:Request){try{
  writeOwner(req);const user=await access(req),ownerId=user.ownerId,db=getDb();
  const {action,payload}=z.object({action:z.string(),payload:z.record(z.string(),z.unknown())}).parse(await req.json());
- const required:Record<string,import('../../../src/access').Module>={saveOrganization:'ajustes',saveSubject:'sujetos',saveEvaluation:'expedientes',reviewCase:'analisis',updateStatus:'analisis',saveSettings:'riesgo',deleteCriterion:'riesgo',importLocal:'expedientes'};
+ const required:Record<string,import('../../../src/access').Module>={saveOrganization:'ajustes',saveLists:'ajustes',saveSubject:'sujetos',saveEvaluation:'expedientes',reviewCase:'analisis',updateStatus:'analisis',saveSettings:'riesgo',deleteCriterion:'riesgo',importLocal:'expedientes'};
  if(!required[action])return json({error:'Operación desconocida.'},400);
  requireModule(user,required[action],true);
  if(action==='importLocal'){requireModule(user,'sujetos',true);requireModule(user,'riesgo',true);}
@@ -54,6 +55,17 @@ export async function POST(req:Request){try{
  if(action==='saveOrganization'){
    const organization=z.object({shortName:z.string().trim().min(2).max(40),legalName:z.string().trim().min(2).max(200),area:z.string().trim().min(2).max(120),taxId:z.string().trim().max(30),address:z.string().trim().max(500),email:z.union([z.literal(''),z.string().trim().email().max(254)]),phone:z.string().trim().max(50),website:z.union([z.literal(''),z.string().url().max(300).refine(v=>/^https?:\/\//.test(v),{message:'Usá una dirección web http o https.'})]),logo:z.string().max(280000).refine(v=>!v||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(v),{message:'Usá un logo PNG, JPG o WebP de hasta 200 KB.'})}).parse(payload);
    if(organization.logo){const [prefix,encoded]=organization.logo.split(',');const bytes=atob(encoded);const valid=prefix.includes('image/png')?bytes.startsWith('\x89PNG\r\n\x1a\n'):prefix.includes('image/jpeg')?bytes.startsWith('\xff\xd8\xff'):bytes.startsWith('RIFF')&&bytes.slice(8,12)==='WEBP';if(!valid||bytes.length>200000)return json({error:'El archivo del logo no es válido o supera 200 KB.'},400);}
+   const [current]=await db.select().from(organizationSettings).where(eq(organizationSettings.ownerId,ownerId));
+   const saved={...organization,...(current?.organization.lists?{lists:current.organization.lists}:{})};
+   await db.insert(organizationSettings).values({ownerId,organization:saved,updatedAt:new Date().toISOString()}).onConflictDoUpdate({target:organizationSettings.ownerId,set:{organization:saved,updatedAt:new Date().toISOString()}});
+   return json({organization:saved});
+ }
+ if(action==='saveLists'){
+   const input=z.partialRecord(z.enum(LIST_KEYS),z.array(z.string().max(80)).max(300)).parse(payload);
+   const lists=Object.fromEntries(Object.entries(input).map(([k,v])=>[k,cleanList(v as string[])]));
+   if(Object.values(lists).some(v=>v.length===0))return json({error:'Una lista no puede quedar vacía.'},400);
+   const [current]=await db.select().from(organizationSettings).where(eq(organizationSettings.ownerId,ownerId));
+   const organization={...(current?.organization||DEFAULT_ORGANIZATION),lists};
    await db.insert(organizationSettings).values({ownerId,organization,updatedAt:new Date().toISOString()}).onConflictDoUpdate({target:organizationSettings.ownerId,set:{organization,updatedAt:new Date().toISOString()}});
    return json({organization});
  }

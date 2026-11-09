@@ -44,7 +44,26 @@ export interface RegulatoryThreshold {
   lastUpdated: string;
 }
 
+export type DocumentType='DNI'|'LE'|'LC'|'CI'|'PASAPORTE'|'OTRO';
+export interface SubjectDetails {
+  documentType?: DocumentType;
+  birthDate?: string;
+  cuit?: string;
+  nationality?: string;
+  maritalStatus?: string;
+  foreignTaxId?: string;
+  street?: string;
+  streetNumber?: string;
+  floor?: string;
+  apartment?: string;
+  postalCode?: string;
+  locality?: string;
+  province?: string;
+  country?: string;
+}
+export type PaymentMethod='EFECTIVO'|'TRANSFERENCIA'|'OTRO';
 export interface Subject {
+  details?: SubjectDetails;
   updatedAt?:string;
   clientCriteriaIds?: string[];
   id: string;
@@ -96,6 +115,15 @@ export interface EvaluationRecord {
   analysisVersion?: number;
   operationAt?: string;
   conditionConfirmed?: boolean;
+  game?: string;
+  modality?: string;
+  drawName?: string;
+  drawDate?: string;
+  agencyNumber?: string;
+  paymentMethod?: PaymentMethod;
+  issuingBank?: string;
+  chequeNumber?: string;
+  cbu?: string;
   conditionReviewedAt?: string;
   activityAtOperation?: string;
   subjectId?: string;
@@ -157,4 +185,5 @@ export interface OrganizationSettings {
  phone:string;
  website:string;
  logo:string;
+ lists?:import('./data/lists').ListsMap;
 }

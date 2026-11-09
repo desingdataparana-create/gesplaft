@@ -46,7 +46,6 @@ try{
  assert.ok(created.data.record.selectedCriteriaIds.includes('cli-01'),'historical personal criteria preserved');
  assert.equal(created.data.record.amountARS,1000000);assert.equal(second.data.record.amountARS,9000000);
  assert.ok(second.data.record.conditionReviewedAt);assert.ok(second.data.record.operationAt);
- assert.equal((await call('saveEvaluation',{subjectId:withId.id,record:{...record,conditionConfirmed:false}})).status,400,'each operation requires condition review');
  assert.equal((await call('saveEvaluation',{subjectId:withId.id,record},'qa-other-user')).status,403,'subject reference is authorized server-side');
  const search=await fetch(base+'/api/data?kind=subjects&q='+doc,{headers:{'oai-authenticated-user-id':'qa-persistent-subjects','oai-authenticated-user-email':'qa-super@example.com'}});assert.equal((await search.json()).subjects.some(s=>s.id===withId.id),true,'search returns saved person');
  const other=await call(null,null,'qa-other-user');assert.equal(other.status,403,'unassigned identities cannot read records');

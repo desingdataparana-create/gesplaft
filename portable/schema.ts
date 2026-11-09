@@ -1,5 +1,5 @@
 import { pgTable, text, boolean, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core';
-import type { EvaluationRecord, RiskCriterion, FactorWeight, RegulatoryThreshold, OrganizationSettings } from '../src/types';
+import type { SubjectDetails, EvaluationRecord, RiskCriterion, FactorWeight, RegulatoryThreshold, OrganizationSettings } from '../src/types';
 
 export const subjects = pgTable('subjects', {
   id: text('id').primaryKey(), ownerId: text('owner_id').notNull(),
@@ -8,6 +8,7 @@ export const subjects = pgTable('subjects', {
   address: text('address').notNull().default(''), email: text('email').notNull().default(''), phone: text('phone').notNull().default(''),
   activity: text('activity').notNull().default(''), pepStatus: boolean('pep_status').notNull().default(false), pepDetails: text('pep_details').notNull().default(''),
   clientCriteriaIds: jsonb('client_criteria_ids').$type<string[]>().notNull().default([]),
+  details: jsonb('details').$type<SubjectDetails>().notNull().default({}),
   createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
 }, t => [uniqueIndex('subjects_owner_document').on(t.ownerId,t.documentKey), index('subjects_owner_name').on(t.ownerId,t.subjectName)]);
 export const evaluations = pgTable('evaluations', {

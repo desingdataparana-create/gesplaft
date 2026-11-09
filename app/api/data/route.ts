@@ -1,6 +1,7 @@
 import {access,requireModule} from '../../access';
 import {can} from '../../../src/access';
 import { DEFAULT_ORGANIZATION } from '../../../src/data/organization';
+import { LIST_KEYS, cleanList } from '../../../src/data/lists';
 import { and, eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '../../../db/index';
@@ -12,10 +13,13 @@ import type { EvaluationRecord, Subject } from '../../../src/types';
 export const dynamic = 'force-dynamic';
 const subjectTypes = ['PERSONA_FISICA','PERSONA_JURIDICA','AGENCIA'] as const;
 const statusValues = ['PENDIENTE','EN_ANALISIS','JUSTIFICADO','ALERTA_EMITIDA','REPORTE_ROS'] as const;
-const subjectSchema = z.object({id:z.string().optional(),updatedAt:z.string().optional(),subjectName:z.string().trim().min(2).max(200),taxId:z.string().trim().min(7).max(20),subjectType:z.enum(subjectTypes),address:z.string().trim().min(3).max(500),email:z.string().trim().email().max(254),phone:z.string().trim().min(6).max(40),activity:z.string().trim().min(2).max(200),pepStatus:z.boolean(),pepDetails:z.string().max(1000).optional(),clientCriteriaIds:z.array(z.string()).max(100).default([])}).refine(s=>/^\d{7,11}$/.test(s.taxId.replace(/\D/g,'')),{message:'Revisá el DNI/CUIT: debe tener entre 7 y 11 dígitos.'}).refine(s=>s.phone.replace(/\D/g,'').length>=6,{message:'Revisá el teléfono.'}).refine(s=>!s.pepStatus||!!s.pepDetails?.trim(),{message:'Indicá el cargo o condición PEP en la ficha del sujeto.'});
-const recordSchema = z.object({subjectUpdatedAt:z.string().optional(),operationType:z.enum(['COBRO_PREMIO','APUESTA_PRESENCIAL','APUESTA_ONLINE','CAMBIO_FICHAS','ALTA_AGENCIA']),amountARS:z.number().finite().positive().max(1e15),locationDepartment:z.string().trim().min(1).max(200),channelName:z.string().trim().min(1).max(200),selectedCriteriaIds:z.array(z.string()).min(1).max(200),notes:z.string().max(10000)});
+const docKey=(v:string)=>v.replace(/[^A-Za-z0-9]/g,'').toUpperCase();
+const short=(n:number)=>z.string().trim().max(n).default('');
+const detailsSchema=z.object({documentType:z.enum(['DNI','LE','LC','CI','PASAPORTE','OTRO']).default('DNI'),birthDate:z.union([z.literal(''),z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]).default('').refine(v=>!v||(Date.parse(v)<=Date.now()&&v>='1900-01-01'),{message:'Revisá la fecha de nacimiento.'}),cuit:z.string().trim().max(13).default('').refine(v=>!v||/^\d{11}$/.test(v.replace(/\D/g,'')),{message:'El CUIT debe tener 11 dígitos.'}),nationality:short(80),maritalStatus:short(40),foreignTaxId:short(40),street:short(120),streetNumber:short(20),floor:short(20),apartment:short(20),postalCode:short(20),locality:short(120),province:short(80),country:short(80)});
+const subjectSchema = z.object({id:z.string().optional(),updatedAt:z.string().optional(),subjectName:z.string().trim().min(2).max(200),taxId:z.string().trim().min(5).max(20),subjectType:z.enum(subjectTypes),address:z.string().trim().min(3).max(500),email:z.string().trim().email().max(254),phone:z.string().trim().min(6).max(40),activity:z.string().trim().min(2).max(200),pepStatus:z.boolean(),pepDetails:z.string().max(1000).optional(),clientCriteriaIds:z.array(z.string()).max(100).default([]),details:detailsSchema.default({documentType:'DNI',birthDate:'',cuit:'',nationality:'',maritalStatus:'',foreignTaxId:'',street:'',streetNumber:'',floor:'',apartment:'',postalCode:'',locality:'',province:'',country:''})}).refine(s=>['PASAPORTE','OTRO'].includes(s.details.documentType)?/^[A-Z0-9]{5,20}$/.test(docKey(s.taxId)):/^\d{7,11}$/.test(docKey(s.taxId)),{message:'Revisá el número de documento: sin puntos y con 7 a 11 dígitos (pasaporte u otro: 5 a 20 letras o números).'}).refine(s=>s.phone.replace(/\D/g,'').length>=6,{message:'Revisá el teléfono.'}).refine(s=>!s.pepStatus||!!s.pepDetails?.trim(),{message:'Indicá el cargo o condición PEP en la ficha del sujeto.'});
+const recordSchema = z.object({subjectUpdatedAt:z.string().optional(),operationType:z.enum(['COBRO_PREMIO','APUESTA_PRESENCIAL','APUESTA_ONLINE','CAMBIO_FICHAS','ALTA_AGENCIA']),amountARS:z.number().finite().positive().max(1e15),locationDepartment:z.string().trim().min(1).max(200),channelName:z.string().trim().min(1).max(200),game:z.string().trim().max(120).default(''),modality:z.string().trim().max(120).default(''),drawName:z.string().trim().max(120).default(''),drawDate:z.union([z.literal(''),z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]).default(''),agencyNumber:z.string().trim().max(30).default(''),paymentMethod:z.enum(['EFECTIVO','TRANSFERENCIA','OTRO']).default('EFECTIVO'),issuingBank:z.string().trim().max(120).default(''),chequeNumber:z.string().trim().max(40).default(''),cbu:z.string().trim().max(30).default(''),selectedCriteriaIds:z.array(z.string()).min(1).max(200),notes:z.string().max(10000)});
 const profileSchema=z.object({profileSummary:z.string().max(4000),comparison:z.enum(['SIN_DATOS','COMPATIBLE','DESVIACION']),comparisonReason:z.string().max(4000),originDeclared:z.string().max(2000),destinationDeclared:z.string().max(2000),beneficialOwner:z.string().max(2000)});
-const operationSchema=recordSchema.extend({profileAssessment:profileSchema.optional(),operationAt:z.string().datetime().refine(v=>Date.parse(v)<=Date.now()+60000,{message:'La operación no puede tener fecha futura.'}),conditionConfirmed:z.literal(true,{error:'Confirmá la condición del sujeto para esta operación.'}),pepStatus:z.boolean(),pepDetails:z.string().max(1000).optional(),activityAtOperation:z.string().trim().min(2).max(200)}).refine(r=>!r.pepStatus || !!r.pepDetails?.trim(),{message:'Indicá el cargo o condición PEP evaluada.'});
+const operationSchema=recordSchema.extend({profileAssessment:profileSchema.optional(),operationAt:z.string().datetime().refine(v=>Date.parse(v)<=Date.now()+60000,{message:'La operación no puede tener fecha futura.'}),conditionConfirmed:z.boolean().optional(),pepStatus:z.boolean(),pepDetails:z.string().max(1000).optional(),activityAtOperation:z.string().trim().min(2).max(200)}).refine(r=>!r.pepStatus || !!r.pepDetails?.trim(),{message:'Indicá el cargo o condición PEP evaluada.'}).refine(r=>r.paymentMethod!=='TRANSFERENCIA'||(!!r.issuingBank.trim()&&/^\d{22}$/.test(r.cbu.replace(/\s/g,''))),{message:'Para una transferencia indicá el banco emisor y el CBU de 22 dígitos.'});
 function json(body:unknown,status=200){return Response.json(body,{status,headers:{'Cache-Control':'no-store'}});}
 function owner(req:Request){const id=req.headers.get('oai-authenticated-user-id');if(!id)throw new Error('UNAUTHORIZED');return id;}
 function writeOwner(req:Request){const id=owner(req);const origin=req.headers.get('Origin');if(origin && origin!==new URL(req.url).origin)throw new Error('FORBIDDEN');return id;}
@@ -43,7 +47,7 @@ export async function GET(req:Request){try{
 export async function POST(req:Request){try{
  writeOwner(req);const user=await access(req),ownerId=user.ownerId,db=getDb();
  const {action,payload}=z.object({action:z.string(),payload:z.record(z.string(),z.unknown())}).parse(await req.json());
- const required:Record<string,import('../../../src/access').Module>={saveOrganization:'ajustes',saveSubject:'sujetos',saveEvaluation:'expedientes',reviewCase:'analisis',updateStatus:'analisis',saveSettings:'riesgo',deleteCriterion:'riesgo',importLocal:'expedientes'};
+ const required:Record<string,import('../../../src/access').Module>={saveOrganization:'ajustes',saveLists:'ajustes',saveSubject:'sujetos',saveEvaluation:'expedientes',reviewCase:'analisis',updateStatus:'analisis',saveSettings:'riesgo',deleteCriterion:'riesgo',importLocal:'expedientes'};
  if(!required[action])return json({error:'Operación desconocida.'},400);
  requireModule(user,required[action],true);
  if(action==='importLocal'){requireModule(user,'sujetos',true);requireModule(user,'riesgo',true);}
@@ -51,11 +55,22 @@ export async function POST(req:Request){try{
  if(action==='saveOrganization'){
    const organization=z.object({shortName:z.string().trim().min(2).max(40),legalName:z.string().trim().min(2).max(200),area:z.string().trim().min(2).max(120),taxId:z.string().trim().max(30),address:z.string().trim().max(500),email:z.union([z.literal(''),z.string().trim().email().max(254)]),phone:z.string().trim().max(50),website:z.union([z.literal(''),z.string().url().max(300).refine(v=>/^https?:\/\//.test(v),{message:'Usá una dirección web http o https.'})]),logo:z.string().max(280000).refine(v=>!v||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(v),{message:'Usá un logo PNG, JPG o WebP de hasta 200 KB.'})}).parse(payload);
    if(organization.logo){const [prefix,encoded]=organization.logo.split(',');const bytes=atob(encoded);const valid=prefix.includes('image/png')?bytes.startsWith('\x89PNG\r\n\x1a\n'):prefix.includes('image/jpeg')?bytes.startsWith('\xff\xd8\xff'):bytes.startsWith('RIFF')&&bytes.slice(8,12)==='WEBP';if(!valid||bytes.length>200000)return json({error:'El archivo del logo no es válido o supera 200 KB.'},400);}
+   const [current]=await db.select().from(organizationSettings).where(eq(organizationSettings.ownerId,ownerId));
+   const saved={...organization,...(current?.organization.lists?{lists:current.organization.lists}:{})};
+   await db.insert(organizationSettings).values({ownerId,organization:saved,updatedAt:new Date().toISOString()}).onConflictDoUpdate({target:organizationSettings.ownerId,set:{organization:saved,updatedAt:new Date().toISOString()}});
+   return json({organization:saved});
+ }
+ if(action==='saveLists'){
+   const input=z.partialRecord(z.enum(LIST_KEYS),z.array(z.string().max(80)).max(300)).parse(payload);
+   const lists=Object.fromEntries(Object.entries(input).map(([k,v])=>[k,cleanList(v as string[])]));
+   if(Object.values(lists).some(v=>v.length===0))return json({error:'Una lista no puede quedar vacía.'},400);
+   const [current]=await db.select().from(organizationSettings).where(eq(organizationSettings.ownerId,ownerId));
+   const organization={...(current?.organization||DEFAULT_ORGANIZATION),lists};
    await db.insert(organizationSettings).values({ownerId,organization,updatedAt:new Date().toISOString()}).onConflictDoUpdate({target:organizationSettings.ownerId,set:{organization,updatedAt:new Date().toISOString()}});
    return json({organization});
  }
  if(action==='saveSubject'){
-   const input=subjectSchema.parse(payload),documentKey=input.taxId.replace(/\D/g,''),now=new Date().toISOString();
+   const input=subjectSchema.parse(payload),documentKey=docKey(input.taxId),now=new Date().toISOString();
    const [old]=await db.select().from(subjects).where(and(eq(subjects.ownerId,ownerId),eq(subjects.documentKey,documentKey)));
    if(old && old.id!==input.id)return json({error:'Ya existe un sujeto con ese documento. Seleccioná su ficha para editarlo.'},409);
    if(input.id && (!old || old.id!==input.id))return json({error:'No se encontró la ficha o cambió su documento.'},409);
@@ -97,18 +112,16 @@ export async function POST(req:Request){try{
    return json({record,subject:person},201);
  }
  if(action==='reviewCase'){
-   const input=z.object({id:z.string(),version:z.number().int().nonnegative(),action:z.enum(['SEGUIMIENTO','CERRAR_JUSTIFICADA','DETERMINAR_SOSPECHOSA','REGISTRAR_ROS']),classification:z.enum(['EN_REVISION','SIN_INUSUALIDAD','INUSUAL','SOSPECHOSA']),alertOrigin:z.string().trim().min(2).max(1000),unusualType:z.string().max(4000),profileSummary:z.string().max(4000),documentationRequested:z.string().max(4000),documentationReviewed:z.string().max(4000),fundsAssessment:z.string().max(4000),beneficialOwner:z.string().max(2000),reasoning:z.string().trim().min(10).max(6000),rosReference:z.string().max(500),rosSubmittedAt:z.string().max(50)}).parse(payload);
+   const input=z.object({id:z.string(),version:z.number().int().nonnegative(),action:z.enum(['SEGUIMIENTO','CERRAR_JUSTIFICADA','DETERMINAR_SOSPECHOSA','REGISTRAR_ROS']),classification:z.enum(['EN_REVISION','SIN_INUSUALIDAD','INUSUAL','SOSPECHOSA']),alertOrigin:z.string().trim().min(2).max(1000).default('Revisión de la operación'),unusualType:z.string().max(4000).default(''),profileSummary:z.string().max(4000).default(''),documentationRequested:z.string().max(4000).default(''),documentationReviewed:z.string().max(4000).default(''),fundsAssessment:z.string().max(4000).default(''),beneficialOwner:z.string().max(2000).default(''),reasoning:z.string().trim().min(10).max(6000),rosReference:z.string().max(500),rosSubmittedAt:z.string().max(50)}).parse(payload);
    const [row]=await db.select().from(evaluations).where(and(eq(evaluations.ownerId,ownerId),eq(evaluations.id,input.id)));
    if(!row)return json({error:'No se encontró el expediente.'},404);
    if((row.record.analysisVersion||0)!==input.version)return json({error:'El expediente cambió. Actualizá la página antes de guardar el análisis.'},409);
    if(input.action==='SEGUIMIENTO' && input.classification==='SOSPECHOSA' && row.record.analysis?.classification!=='SOSPECHOSA')return json({error:'Usá la decisión Determinar sospechosa para registrar esa conclusión.'},400);
-   if((input.classification==='INUSUAL'||input.action==='DETERMINAR_SOSPECHOSA')&&input.unusualType.trim().length<10)return json({error:'Describí la inusualidad detectada.'},400);
+   if((input.classification==='INUSUAL'||input.action==='DETERMINAR_SOSPECHOSA'||input.action==='CERRAR_JUSTIFICADA')&&input.reasoning.length<30)return json({error:'Explicá el análisis con más detalle (al menos 30 caracteres).'},400);
    if(row.record.status==='REPORTE_ROS' && input.action!=='SEGUIMIENTO')return json({error:'El ROS ya está registrado. Agregá novedades mediante seguimiento, conservando la constancia.'},400);
    if(input.action==='CERRAR_JUSTIFICADA' && input.classification==='INUSUAL' && !input.documentationReviewed.trim())return json({error:'Registrá el sustento documental revisado para justificar la inusualidad.'},400);
    if(input.action==='CERRAR_JUSTIFICADA' && input.classification==='EN_REVISION')return json({error:'Completá la clasificación antes de cerrar el análisis.'},400);
-   if(input.action==='CERRAR_JUSTIFICADA' && (!input.profileSummary.trim() || !input.fundsAssessment.trim()))return json({error:'Documentá el perfil considerado y el análisis que sustenta el cierre.'},400);
    if(input.action==='CERRAR_JUSTIFICADA' && input.classification==='SOSPECHOSA')return json({error:'Revisá la clasificación antes de cerrar una operación como justificada.'},400);
-   if(input.action==='DETERMINAR_SOSPECHOSA' && !input.fundsAssessment.trim())return json({error:'Registrá los elementos analizados que sustentan la sospecha.'},400);
    if(input.action==='REGISTRAR_ROS' && (row.record.analysis?.classification!=='SOSPECHOSA'||!input.rosReference.trim()||!Number.isFinite(Date.parse(input.rosSubmittedAt))))return json({error:'Primero documentá la determinación de sospecha. Para registrar el ROS presentado, indicá su constancia y fecha.'},400);
    if(input.action==='REGISTRAR_ROS' && Date.parse(input.rosSubmittedAt)>Date.now())return json({error:'La fecha de presentación no puede ser futura.'},400);
    const review={...input,classification:input.action==='DETERMINAR_SOSPECHOSA'||input.action==='REGISTRAR_ROS'||row.record.status==='REPORTE_ROS'?'SOSPECHOSA' as const:input.classification,rosReference:row.record.status==='REPORTE_ROS'?(row.record.analysis?.rosReference||input.rosReference):input.rosReference,rosSubmittedAt:row.record.status==='REPORTE_ROS'?(row.record.analysis?.rosSubmittedAt||input.rosSubmittedAt):input.rosSubmittedAt,analyst:req.headers.get('oai-authenticated-user-email')||'Usuario autenticado',reviewedAt:new Date().toISOString()};

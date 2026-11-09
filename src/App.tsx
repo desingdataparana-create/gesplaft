@@ -6,9 +6,10 @@ import {UsersView} from './components/UsersView';
 import {DashboardView,type DashboardData} from './components/DashboardView';
 import { SystemSettingsView, type ThemeMode } from './components/SystemSettingsView';
 import { DEFAULT_ORGANIZATION } from './data/organization';
+import { ListsProvider } from './lists';
 import type { OrganizationSettings } from './types';
 import { request } from './utils/api';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { AlertsMonitoringView } from './components/AlertsMonitoringView';
 import { NormativaMatrizView } from './components/NormativaMatrizView';
@@ -17,6 +18,7 @@ import { CaseAnalysisModal } from './components/CaseAnalysisModal';
 import { RiskDossierModal } from './components/RiskDossierModal';
 import { ExportReportsModal } from './components/ExportReportsModal';
 import { SubjectsView } from './components/SubjectsView';
+import { SectionTabs } from './components/SectionTabs';
 import { RiskEvaluationModal } from './components/RiskEvaluationModal';
 
 import { 
@@ -91,7 +93,6 @@ export default function App() {
 
   useEffect(() => {
     const closeModal = selectedAnalysis ? ()=>setSelectedAnalysis(null) : isAddModalOpen ? () => setIsAddModalOpen(false)
-      : isNewEvaluationModalOpen ? handleCloseNewEvaluationModal
       : selectedDossier ? () => setSelectedDossier(null)
       : isExportModalOpen ? () => setIsExportModalOpen(false) : null;
     if (!closeModal) return;
@@ -113,15 +114,18 @@ export default function App() {
     };
     document.addEventListener('keydown', onKey);
     return () => { clearTimeout(timer); document.body.style.overflow = overflow; document.removeEventListener('keydown', onKey); previous?.focus(); };
-  }, [isAddModalOpen, isNewEvaluationModalOpen, selectedDossier, isExportModalOpen, selectedAnalysis]);
+  }, [isAddModalOpen, selectedDossier, isExportModalOpen, selectedAnalysis]);
 
   const handleOpenExportModal = (initialType: 'EXPEDIENTES' | 'PARAMETROS' | 'UMBRALES' | 'ESTADISTICAS' = 'EXPEDIENTES') => {
     setExportInitialType(initialType);
     setIsExportModalOpen(true);
   };
 
+  // Pantalla desde la que se abrió el asistente: al cerrarlo se vuelve ahí (Inicio, Sujetos o Expedientes).
+  const returnTab = useRef<string>('monitoreo');
   const handleOpenNewEvaluationModal = (subjectData?: typeof initialEvaluationSubject) => {
     setInitialEvaluationSubject(subjectData || null);
+    if (!isNewEvaluationModalOpen) returnTab.current = currentTab === 'dashboard' || currentTab === 'sujetos' ? currentTab : 'monitoreo';
     setCurrentTab('monitoreo');
     window.location.hash = '/evaluacion/';
     setIsNewEvaluationModalOpen(true);
@@ -130,35 +134,28 @@ export default function App() {
   const handleCloseNewEvaluationModal = () => {
     setIsNewEvaluationModalOpen(false);
     setInitialEvaluationSubject(null);
-    setCurrentTab('monitoreo');
-    if (/evaluacion|simulador/.test(window.location.hash)) {
-      window.history.replaceState(null, '', '#/expedientes/');
-    }
+    handleTabChange(returnTab.current);
+    returnTab.current = 'monitoreo';
   };
 
   // Sync route with URL hash on mount & change
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash;
-      if(hash.includes('dashboard')||!hash){setCurrentTab('dashboard');setIsNewEvaluationModalOpen(false);
-      } else if(hash.includes('usuarios')){setCurrentTab('usuarios');setIsNewEvaluationModalOpen(false);
-      } else if (hash.includes('simulador') || hash.includes('evaluacion')) {
-        setCurrentTab('monitoreo');
-        setIsNewEvaluationModalOpen(true);
-        if(hash.includes('dashboard')||!hash){setCurrentTab('dashboard');setIsNewEvaluationModalOpen(false);
-      } else if(hash.includes('usuarios')){setCurrentTab('usuarios');setIsNewEvaluationModalOpen(false);
-      } else if (hash.includes('simulador')) window.history.replaceState(null, '', '#/evaluacion/');
-      } else if (hash.includes('ajustes')) {
-        setCurrentTab('ajustes');setIsNewEvaluationModalOpen(false);
-      } else if (hash.includes('sujetos')) {
-        setCurrentTab('sujetos');setIsNewEvaluationModalOpen(false);
-      } else if (hash.includes('normativa') || hash.includes('parametros') || hash.includes('matriz') || hash.includes('umbrales')) {
-        setCurrentTab('normativa');
-        setIsNewEvaluationModalOpen(false);
-      } else {
-        setCurrentTab('monitoreo');
-        setIsNewEvaluationModalOpen(false);
-      }
+      const go = (tab: string, openEvaluation = false) => {
+        setCurrentTab(tab);
+        setIsNewEvaluationModalOpen(openEvaluation);
+      };
+      if (hash.includes('simulador')) window.history.replaceState(null, '', '#/evaluacion/');
+      if (hash.includes('dashboard') || !hash) go('dashboard');
+      else if (hash.includes('usuarios')) go('usuarios');
+      else if (hash.includes('simulador') || hash.includes('evaluacion')) go('monitoreo', true);
+      else if (hash.includes('ajustes')) go('ajustes');
+      else if (hash.includes('sujetos')) go('sujetos');
+      else if (hash.includes('umbrales')) go('umbrales');
+      else if (hash.includes('matriz')) go('matriz');
+      else if (/normativa|parametros/.test(hash)) go('normativa');
+      else go('monitoreo');
     };
 
     handleHashChange();
@@ -168,14 +165,15 @@ export default function App() {
 
   // Update hash when tab changes
   const handleTabChange = (tab: string) => {
+    if(isNewEvaluationModalOpen){setIsNewEvaluationModalOpen(false);setInitialEvaluationSubject(null);returnTab.current='monitoreo';}
     if(tab==='dashboard')void loadState().catch(e=>setServerError(e.message));
     setCurrentTab(tab);
     if(tab==='dashboard'||tab==='usuarios'){window.location.hash=`/${tab}/`;
     }else if(tab==='ajustes'){window.location.hash='/ajustes/';
     } else if (tab === 'sujetos') {
       window.location.hash = '/sujetos/';
-    } else if (tab === 'normativa') {
-      window.location.hash = '/normativa/';
+    } else if (tab === 'normativa' || tab === 'umbrales' || tab === 'matriz') {
+      window.location.hash = `/${tab}/`;
     } else {
       window.location.hash = '/expedientes/';
     }
@@ -201,10 +199,14 @@ export default function App() {
   const handleResetDefaults = () => {
     if(window.confirm('¿Restablecer criterios, ponderaciones y umbrales a los valores de ejemplo?'))void saveConfig({criteria:INITIAL_RISK_CRITERIA,factorWeights:INITIAL_FACTOR_WEIGHTS,thresholds:INITIAL_REGULATORY_THRESHOLDS}).catch(()=>{});
   };
-  const handleSaveEvaluation = async (record:EvaluationRecord):Promise<EvaluationRecord> => {
+  const handleSaveEvaluation = async (record:EvaluationRecord,review?:{decision:'JUSTIFICAR'|'SEGUIR'|'ROS';reasoning:string}):Promise<EvaluationRecord> => {
     const payload={subjectId:record.subjectId,requestId:record.id,record};
     const data=await request<{record:EvaluationRecord;subject:Subject}>('saveEvaluation',payload);
-    setRecords(prev=>[data.record,...prev.filter(r=>r.id!==data.record.id)]);setSubjects(prev=>[data.subject,...prev.filter(s=>s.id!==data.subject.id)]);return data.record;
+    setRecords(prev=>[data.record,...prev.filter(r=>r.id!==data.record.id)]);setSubjects(prev=>[data.subject,...prev.filter(s=>s.id!==data.subject.id)]);
+    if(!review)return data.record;
+    const map={JUSTIFICAR:{action:'CERRAR_JUSTIFICADA',classification:'SIN_INUSUALIDAD'},SEGUIR:{action:'SEGUIMIENTO',classification:'EN_REVISION'},ROS:{action:'DETERMINAR_SOSPECHOSA',classification:'SOSPECHOSA'}}[review.decision];
+    const reviewed=await request<{record:EvaluationRecord}>('reviewCase',{...map,id:data.record.id,version:data.record.analysisVersion||0,reasoning:review.reasoning,rosReference:'',rosSubmittedAt:''});
+    setRecords(prev=>prev.map(r=>r.id===reviewed.record.id?reviewed.record:r));return reviewed.record;
   };
   const handleUpdateRecordStatus = async (id:string,status:EvaluationRecord['status']) => {
     setSaving(true);setServerError('');
@@ -227,7 +229,9 @@ export default function App() {
   const permitted=currentTab==='usuarios'?user?.role==='SUPERADMIN':allow(tabModules[currentTab]||'expedientes');
   useEffect(()=>{if(!loaded||permitted)return;const next=Object.keys(tabModules).find(t=>allow(tabModules[t]));if(next)handleTabChange(next);},[loaded,user,currentTab]);
   if(!loading&&!user)return <div className="login-shell"><section className="surface p-8 max-w-md"><span className="workspace-kicker">IAFAS · PLA/FT</span><h1 className="text-2xl font-semibold my-4">Acceso al sistema</h1><p className="text-sm mb-6">{serverError||'Iniciá sesión con una cuenta habilitada por el superadministrador.'}</p><a className="button-primary" target="_top" href={sitePath('/signin-with-chatgpt?return_to=%2F')}>{passwordAuth()?'Iniciar sesión':'Iniciar sesión con ChatGPT'}</a><a className="block mt-5 text-sm underline" target="_top" href={sitePath('/signout-with-chatgpt?return_to=%2F')}>Cambiar cuenta</a></section></div>;
+  const evaluationOpen=isNewEvaluationModalOpen&&!loading&&!serverError&&allow('expedientes',true);
   return (
+    <ListsProvider value={organization.lists}>
     <div className="app-shell minimal-ui workspace-ui min-h-screen bg-[#FAFBFC] text-slate-800 flex flex-col font-sans antialiased selection:bg-sky-500 selection:text-white">
       
       {/* Top Header Bar */}
@@ -256,7 +260,27 @@ export default function App() {
       {loading && <p className="p-8 text-slate-500" role="status">Cargando datos…</p>}
       {/* Main Content View with Clean Layout */}
       <main data-section={currentTab} id="contenido" className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-        {loaded&&!loading&&currentTab==='dashboard'&&dashboard&&<DashboardView data={dashboard} onNavigate={handleTabChange} canOpen={allow('expedientes')}/>}
+      {/* Nueva evaluación: página propia */}
+      <RiskEvaluationModal
+        thresholds={thresholds}
+        records={records}
+        canEditSubject={allow('sujetos',true)}
+        canAnalyze={allow('analisis',true)}
+        isOpen={evaluationOpen}
+        onClose={handleCloseNewEvaluationModal}
+        criteria={criteria}
+        factorWeights={factorWeights}
+        onSaveSubject={handleSaveSubject}
+        onSaveEvaluation={handleSaveEvaluation}
+        onViewDossier={(rec) => {
+          handleCloseNewEvaluationModal();
+          setSelectedDossier(rec);
+        }}
+        initialSubjectData={initialEvaluationSubject}
+      />
+        {!evaluationOpen&&<>
+        <SectionTabs user={user} currentTab={currentTab} onChange={handleTabChange}/>
+        {loaded&&!loading&&currentTab==='dashboard'&&dashboard&&<DashboardView data={dashboard} onNavigate={handleTabChange} canOpen={allow('expedientes')} records={records} canCreate={allow('expedientes',true)} onNewEvaluation={()=>handleOpenNewEvaluationModal()} onOpenCase={setSelectedDossier}/>}
         {loaded&&!loading&&currentTab==='usuarios'&&user?.role==='SUPERADMIN'&&<UsersView/>}
         {loaded&&!loading&&!permitted&&<p>No tenés módulos asignados. Consultá al superadministrador.</p>}
         {loaded && !loading && allow('expedientes') && currentTab === 'monitoreo' && (
@@ -270,11 +294,12 @@ export default function App() {
           />
         )}
 
-        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset disabled={!allow('ajustes',true)}><SystemSettingsView key={loaded?'loaded':'initial'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}}/></fieldset>}
+        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset className="min-w-0" disabled={!allow('ajustes',true)}><SystemSettingsView key={loaded?'loaded':'initial'} canBackup={user?.role==='SUPERADMIN'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}} onSaveLists={async lists=>{const result=await request<{organization:OrganizationSettings}>('saveLists',lists);setOrganization(result.organization)}}/></fieldset>}
         {loaded && !loading && currentTab==='sujetos' && allow('sujetos') && <SubjectsView canEdit={allow('sujetos',true)} canEvaluate={allow('expedientes',true)} criteria={criteria} subjects={subjects} records={records} onSave={handleSaveSubject} onEvaluate={handleOpenNewEvaluationModal} onViewDossier={setSelectedDossier}/>}
 
         {loaded && !loading && allow('riesgo') && (currentTab === 'normativa' || currentTab === 'parametros' || currentTab === 'matriz' || currentTab === 'umbrales') && (
-          <fieldset disabled={!allow('riesgo',true)}><NormativaMatrizView
+          <fieldset className="min-w-0" disabled={!allow('riesgo',true)}><NormativaMatrizView
+            section={currentTab==='umbrales'?'UMBRALES':currentTab==='matriz'?'MATRIZ':'CRITERIOS'}
             onDeleteCriterion={user?.role==='SUPERADMIN'?handleDeleteCriterion:undefined}
             deleting={saving}
             thresholds={thresholds}
@@ -293,6 +318,7 @@ export default function App() {
           /></fieldset>
         )}
         {loaded && !loading && currentTab==='monitoreo' && user?.role==='SUPERADMIN' && records.length===0 && <details className="text-xs text-slate-400 max-w-7xl mx-auto w-full"><summary>Opciones de prueba</summary><button disabled={saving} onClick={()=>importRecords(INITIAL_EVALUATION_RECORDS)} className="text-teal-700 underline mt-3">Cargar ejemplos de prueba</button></details>}
+        </>}
       </main>
 
       {/* Sleek Minimal Footer */}
@@ -310,24 +336,6 @@ export default function App() {
       {/* ======================================================== */}
       {/* RESPONSIVE POPUP MODALS: CONSULTAS & CARGAS              */}
       {/* ======================================================== */}
-
-      {/* 2. Modal Emergente de Carga de Operación / Nueva Evaluación */}
-      <RiskEvaluationModal
-        thresholds={thresholds}
-        records={records}
-        canEditSubject={allow('sujetos',true)}
-        isOpen={isNewEvaluationModalOpen && !loading && !serverError && allow('expedientes',true)}
-        onClose={handleCloseNewEvaluationModal}
-        criteria={criteria}
-        factorWeights={factorWeights}
-        onSaveSubject={handleSaveSubject}
-        onSaveEvaluation={handleSaveEvaluation}
-        onViewDossier={(rec) => {
-          handleCloseNewEvaluationModal();
-          setSelectedDossier(rec);
-        }}
-        initialSubjectData={initialEvaluationSubject}
-      />
 
       {selectedAnalysis&&allow('analisis',true)&&<CaseAnalysisModal key={`${selectedAnalysis.id}-${selectedAnalysis.analysisVersion||0}`} record={selectedAnalysis} onClose={()=>setSelectedAnalysis(null)} onSaved={record=>setRecords(prev=>prev.map(r=>r.id===record.id?record:r))}/>}
       {/* 3. Modal Emergente de Consulta: Ficha Oficial de Riesgo / Expediente */}
@@ -359,9 +367,11 @@ export default function App() {
         criteria={criteria}
         factorWeights={factorWeights}
         thresholds={thresholds}
+        subjects={subjects}
         initialReportType={exportInitialType}
       />
 
     </div>
+    </ListsProvider>
   );
 }

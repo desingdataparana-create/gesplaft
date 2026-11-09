@@ -24,7 +24,7 @@ Los nombres y puertos son una propuesta; no se comprobó todavía su disponibili
 node --env-file=/etc/gesplaft/test.env portable/migrate.mjs
 ```
 
-El esquema es para una instalación inicial. No migra datos desde Sites ni sustituye un plan de migración de una base existente. Las actualizaciones futuras del esquema requerirán migraciones versionadas.
+El esquema es para una instalación inicial. No migra datos desde Sites. Las migraciones son versionadas (`portable/migrations/NNNN_nombre.sql`) y se aplican una sola vez, en orden, dentro de una transacción; el mismo comando sirve para instalar y para actualizar. Todo cambio de esquema debe agregar un archivo nuevo y reflejarse también en `db/schema.ts` y `portable/schema.ts`.
 
 ## Primer superadministrador
 
@@ -54,3 +54,14 @@ Verificar HTTPS y salud a través de Nginx, login, alta de sujeto, dos operacion
 Antes de la demo: fijar el SHA probado, separar variables/base/proceso/puerto, respaldar archivos y base con `pg_dump`, y probar que el respaldo es legible en una base aislada. Preparar el diff de Nginx para 8095 y obtener aprobación del pase.
 
 La reversión debe conservar el commit, artefactos y configuración previos. Volver al código anterior no revierte el esquema; no restaurar una base perdiendo operaciones nuevas sin autorización específica. Para una instalación nueva, deshabilitar únicamente la nueva ruta/proceso si falla.
+
+## Complementos recomendados (operación)
+
+1. **Orden obligatorio:** ejecutar `corepack pnpm run vps:build` antes de `portable/migrate.mjs` y `portable/admin.mjs`; ambos importan desde `dist-vps/`.
+2. **Puertos:** comprobar que 8094/8095 estén libres con `ss -ltnp | grep -E '8094|8095'`.
+3. **Persistencia de PM2:** tras iniciar `gesplaft-test`, ejecutar `pm2 save` y, una sola vez, `pm2 startup` para que el proceso vuelva después de un reinicio. Instalar `pm2 install pm2-logrotate`.
+4. **Nginx:** copiar `deploy/nginx-http.conf` al contexto `http {}` (zona `gesplaft_login`) antes de incluir `nginx-location.conf`. Activar HSTS solo con HTTPS ya verificado. Luego `nginx -t`; el reload de un Nginx compartido requiere autorización.
+5. **Respaldos automáticos:** programar `deploy/backup.sh` en cron (ejemplo en el propio script), guardar copias fuera del VPS y probar una restauración con `pg_restore` en una base aislada.
+6. **Firewall:** permitir solo 22, 80 y 443 (`ufw`); PostgreSQL escucha únicamente en 127.0.0.1.
+7. **Certificado:** emitir el certificado del subdominio de pruebas (por ejemplo con certbot) antes de fijar `PUBLIC_ORIGIN`.
+8. **Auditoría:** la tabla `audit_log` registra inicios y cierres de sesión, intentos fallidos, asignación de claves, lecturas y escrituras de datos y usuarios (sin contenido de fichas ni contraseñas). El superadministrador puede consultarla en `GET /gesplaft/api/audit?limit=200`. Definir una política de conservación y respaldo para esa tabla.

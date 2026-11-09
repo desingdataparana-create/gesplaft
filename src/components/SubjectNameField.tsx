@@ -1,32 +1,29 @@
-import {sitePath,passwordAuth} from '../utils/paths';
+import {sitePath} from '../utils/paths';
 import React,{useEffect,useId,useState} from 'react';
 import type {Subject} from '../types';
 interface Props{value:string;linked:boolean;onChange:(name:string)=>void;onSelect:(subject:Subject)=>void}
+const TYPES:Record<Subject['subjectType'],string>={PERSONA_FISICA:'Persona física',PERSONA_JURIDICA:'Persona jurídica',AGENCIA:'Agencia'};
 export function SubjectNameField({value,linked,onChange,onSelect}:Props){
- const listId=useId();
- const [matches,setMatches]=useState<Subject[]>([]),[open,setOpen]=useState(false),[busy,setBusy]=useState(false),[done,setDone]=useState(false),[error,setError]=useState(''),[active,setActive]=useState(-1);
+ const id=useId();
+ const [matches,setMatches]=useState<Subject[]>([]),[busy,setBusy]=useState(false),[done,setDone]=useState(false),[error,setError]=useState('');
  useEffect(()=>{
-  setMatches([]);setActive(-1);setDone(false);setError('');
-  if(linked||value.trim().length<2){setBusy(false);setOpen(false);return;}
-  const controller=new AbortController();setBusy(true);setOpen(true);
+  setMatches([]);setDone(false);setError('');
+  if(linked||value.trim().length<2){setBusy(false);return;}
+  const controller=new AbortController();setBusy(true);
   const timer=setTimeout(async()=>{try{const response=await fetch(sitePath('/api/data?kind=subjects&q=')+encodeURIComponent(value.trim()),{cache:'no-store',signal:controller.signal});const data=await response.json() as {subjects:Subject[];error?:string};if(!response.ok)throw new Error(data.error||'No se pudo buscar.');if(!controller.signal.aborted){setMatches(data.subjects);setDone(true)}}catch(err){if(!controller.signal.aborted)setError((err as Error).message)}finally{if(!controller.signal.aborted)setBusy(false)}},250);
   return()=>{clearTimeout(timer);controller.abort()};
  },[value,linked]);
- const choose=(subject:Subject)=>{setOpen(false);setActive(-1);onSelect(subject)};
- return <div className="sm:col-span-2 relative">
-  <label htmlFor={listId+'-input'} className="block text-xs font-medium text-slate-600 mb-1.5">Nombre completo / Razón social</label>
-  <input id={listId+'-input'} role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={listId} aria-activedescendant={open&&active>=0?`${listId}-${active}`:undefined} autoComplete="off" value={value} placeholder="Escribí el nombre de un sujeto registrado" onChange={e=>onChange(e.target.value)} onFocus={()=>{if(!linked&&value.trim().length>=2)setOpen(true)}} onBlur={()=>setOpen(false)} onKeyDown={e=>{
-    if(e.key==='ArrowDown'&&matches.length){e.preventDefault();setOpen(true);setActive(i=>Math.min(i+1,matches.length-1))}
-    else if(e.key==='ArrowUp'&&matches.length){e.preventDefault();setOpen(true);setActive(i=>Math.max(i-1,0))}
-    else if(e.key==='Enter'&&open){e.preventDefault();if(active>=0&&matches[active])choose(matches[active])}
-    else if(e.key==='Escape'&&open){e.stopPropagation();setOpen(false)}
-   }} className="w-full py-2.5 px-3 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:border-teal-600"/>
-  {open&&<div className="absolute left-0 right-0 top-full mt-1 surface shadow-lg z-20 max-h-64 overflow-y-auto">
-    {busy&&<p role="status" className="p-3 text-xs text-slate-500">Buscando personas registradas…</p>}
-    {error&&<p role="alert" className="p-3 text-xs text-rose-700">{error}</p>}
-    <ul id={listId} role="listbox" aria-label="Personas registradas">{matches.map((s,i)=><li key={s.id} id={`${listId}-${i}`} role="option" aria-selected={active===i} onMouseDown={e=>e.preventDefault()} onMouseEnter={()=>setActive(i)} onClick={()=>choose(s)} className={`cursor-pointer p-3 border-b last:border-b-0 border-slate-100 text-sm ${active===i?'bg-teal-50':'hover:bg-slate-50'}`}><span className="block font-medium text-slate-800">{s.subjectName}</span><span className="block text-xs text-slate-500 mt-1">{s.taxId}{s.email?` · ${s.email}`:''}</span></li>)}</ul>
-    {done&&!matches.length&&<p role="status" className="p-3 text-xs text-slate-500">No encontramos coincidencias. Usá «Nuevo sujeto» para registrar su ficha.</p>}
-  </div>}
-  <p className="text-[11px] text-slate-400 mt-1.5">{linked?'Sujeto registrado: la operación utilizará su ficha existente.':'Si la persona ya existe, seleccioná su nombre en las sugerencias.'}</p>
+ const searching=!linked&&value.trim().length>=2;
+ return <div className="space-y-3">
+  <label htmlFor={id} className="flex flex-col gap-1.5 text-sm font-semibold text-slate-800">Buscar sujeto
+   <input id={id} type="search" autoComplete="off" value={value} placeholder="Nombre o documento" onChange={e=>onChange(e.target.value)} className="w-full py-3 px-3 bg-white border border-slate-300 rounded-lg text-base font-normal text-slate-900 focus:border-teal-600"/>
+   <span className="text-xs font-normal text-slate-500">{linked?'Sujeto registrado: la operación usa su ficha existente.':'Por nombre o documento. No distingue tildes ni mayúsculas.'}</span>
+  </label>
+  {searching&&<fieldset className="space-y-2 min-w-0"><legend className="text-sm font-semibold text-slate-800 mb-1">Resultados</legend>
+   {busy&&<p role="status" className="text-sm text-slate-500">Buscando…</p>}
+   {error&&<p role="alert" className="text-sm text-rose-700">{error}</p>}
+   {matches.map(s=><label key={s.id} className="flex items-center gap-3 p-3.5 border border-slate-300 rounded-lg cursor-pointer hover:bg-teal-50/60 has-[:checked]:border-2 has-[:checked]:border-teal-700 has-[:checked]:bg-teal-50"><input type="radio" name={id+'-subject'} className="w-5 h-5 accent-teal-700 shrink-0" onChange={()=>onSelect(s)}/><span className="flex flex-col min-w-0"><strong className="text-base text-slate-900">{s.subjectName}</strong><span className="text-sm text-slate-600">Documento {s.taxId} · {TYPES[s.subjectType]}</span></span></label>)}
+   {done&&!matches.length&&<p role="status" className="text-sm text-slate-600">No encontramos coincidencias. Usá «El sujeto no existe: crear uno nuevo».</p>}
+  </fieldset>}
  </div>;
 }

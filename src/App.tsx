@@ -11,6 +11,7 @@ import type { OrganizationSettings } from './types';
 import { request } from './utils/api';
 import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
+import { FloatingActions, FAB_ICONS } from './components/FloatingActions';
 import { AlertsMonitoringView } from './components/AlertsMonitoringView';
 import { NormativaMatrizView } from './components/NormativaMatrizView';
 import { AddParameterModal } from './components/AddParameterModal';
@@ -253,6 +254,16 @@ export default function App() {
         setIsMobileMenuOpen={setIsMobileMenuOpen}
         onOpenExportModal={() => handleOpenExportModal('EXPEDIENTES')}
         onOpenNewEvaluationModal={() => handleOpenNewEvaluationModal()}
+      />
+      <FloatingActions
+        hidden={evaluationOpen||!!serverError}
+        disabled={!loaded||loading}
+        actions={[
+          ...(allow('expedientes',true)?[{id:'nueva',label:'Nueva evaluación',icon:FAB_ICONS.FilePlus2,primary:true,onSelect:()=>handleOpenNewEvaluationModal()}]:[]),
+          ...(allow('expedientes')?[{id:'casos',label:'Ver casos',icon:FAB_ICONS.FileText,onSelect:()=>handleTabChange('monitoreo')}]:[]),
+          ...(allow('sujetos')?[{id:'sujetos',label:'Sujetos',icon:FAB_ICONS.Users,onSelect:()=>handleTabChange('sujetos')}]:[]),
+          ...(allow('expedientes')?[{id:'informes',label:'Informes',icon:FAB_ICONS.Download,onSelect:()=>handleOpenExportModal('EXPEDIENTES')}]:[]),
+        ]}
       />
 
       {serverError && <div role="alert" className="m-4 p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm">{serverError}{serverError.includes('Iniciá sesión') && <a className="underline ml-3" href={sitePath('/signin-with-chatgpt?return_to=%2F')} target="_top">Iniciar sesión</a>}<button className="underline ml-3" onClick={()=>{setLoading(true);loadState().then(()=>setServerError('')).catch(e=>setServerError(e.message)).finally(()=>setLoading(false))}}>Reintentar conexión</button></div>}

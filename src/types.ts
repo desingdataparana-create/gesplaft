@@ -188,6 +188,7 @@ export interface OrganizationSettings {
  icon?:string;
  theme?:BrandTheme;
  lists?:import('./data/lists').ListsMap;
+ listsDisabled?:import('./data/lists').ListKey[];
 }
 
 // Colores de la interfaz elegidos en Configuración → Apariencia. Valores hexadecimales #RRGGBB.

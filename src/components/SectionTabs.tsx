@@ -3,10 +3,10 @@ import {can,type AccessUser} from '../access';
 type Tab={id:string;label:string};
 const GROUPS:Record<string,{label:string;tabs:Tab[]}>={
  casos:{label:'Tipo de caso',tabs:[{id:'monitoreo',label:'Expedientes'},{id:'sujetos',label:'Sujetos'}]},
- config:{label:'Secciones de configuración',tabs:[{id:'normativa',label:'Parámetros de riesgo'},{id:'umbrales',label:'Umbrales'},{id:'matriz',label:'Matriz'},{id:'ajustes',label:'Organización'},{id:'usuarios',label:'Usuarios y permisos'}]},
+ config:{label:'Secciones de configuración',tabs:[{id:'normativa',label:'Parámetros de riesgo'},{id:'umbrales',label:'Umbrales'},{id:'matriz',label:'Matriz'},{id:'ajustes',label:'Organización'},{id:'apariencia',label:'Apariencia'},{id:'usuarios',label:'Usuarios y permisos'}]},
 };
-const MODULE:Record<string,Parameters<typeof can>[1]|'users'>={monitoreo:'expedientes',sujetos:'sujetos',normativa:'riesgo',umbrales:'riesgo',matriz:'riesgo',ajustes:'ajustes',usuarios:'users'};
-export const groupOf=(tab:string)=>['monitoreo','sujetos'].includes(tab)?'casos':['normativa','parametros','matriz','umbrales','ajustes','usuarios'].includes(tab)?'config':null;
+const MODULE:Record<string,Parameters<typeof can>[1]|'users'>={monitoreo:'expedientes',sujetos:'sujetos',normativa:'riesgo',umbrales:'riesgo',matriz:'riesgo',ajustes:'ajustes',apariencia:'ajustes',usuarios:'users'};
+export const groupOf=(tab:string)=>['monitoreo','sujetos'].includes(tab)?'casos':['normativa','parametros','matriz','umbrales','ajustes','apariencia','usuarios'].includes(tab)?'config':null;
 export const allowedTab=(user:AccessUser|null,id:string)=>MODULE[id]==='users'?user?.role==='SUPERADMIN':can(user,MODULE[id] as Parameters<typeof can>[1]);
 export function SectionTabs({user,currentTab,onChange}:{user:AccessUser|null;currentTab:string;onChange:(tab:string)=>void}){
  const key=groupOf(currentTab);if(!key)return null;

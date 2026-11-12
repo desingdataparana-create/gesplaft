@@ -53,7 +53,7 @@ export function BrandingCard({organization,onSave,ready}:Props){
   <div className="grid sm:grid-cols-2 gap-6">
    <fieldset><legend className="text-sm font-semibold mb-3">Logo en la barra superior</legend>
     {([['square','Cuadrado, con el nombre al lado'],['wide','Horizontal, sin recuadro (el logo reemplaza al nombre)']] as const).map(([id,label])=><label key={id} className="flex items-center gap-2 text-sm mb-2 cursor-pointer"><input type="radio" name="logoStyle" checked={theme.logoStyle===id} onChange={()=>update({logoStyle:id})}/>{label}</label>)}
-    <p className="text-xs text-slate-500">El logo se carga en «Datos de la organización».{!organization.logo&&' Todavía no hay un logo guardado.'}</p>
+    <p className="text-xs text-slate-500">El logo se carga en Configuración → Organización.{!organization.logo&&' Todavía no hay un logo guardado.'}</p>
    </fieldset>
    <div><h3 className="text-sm font-semibold mb-3">Ícono de la pestaña del navegador</h3>
     <div className="flex items-center gap-3">{icon?<img src={icon} alt="Ícono actual" className="w-10 h-10 rounded border border-slate-200 bg-white p-1"/>:<span className="w-10 h-10 rounded border border-dashed border-slate-300"/>}

@@ -155,6 +155,7 @@ export default function App() {
       if (hash.includes('dashboard') || !hash) go('dashboard');
       else if (hash.includes('usuarios')) go('usuarios');
       else if (hash.includes('simulador') || hash.includes('evaluacion')) go('monitoreo', true);
+      else if (hash.includes('apariencia')) go('apariencia');
       else if (hash.includes('ajustes')) go('ajustes');
       else if (hash.includes('sujetos')) go('sujetos');
       else if (hash.includes('umbrales')) go('umbrales');
@@ -174,7 +175,7 @@ export default function App() {
     if(tab==='dashboard')void loadState().catch(e=>setServerError(e.message));
     setCurrentTab(tab);
     if(tab==='dashboard'||tab==='usuarios'){window.location.hash=`/${tab}/`;
-    }else if(tab==='ajustes'){window.location.hash='/ajustes/';
+    }else if(tab==='ajustes'||tab==='apariencia'){window.location.hash=`/${tab}/`;
     } else if (tab === 'sujetos') {
       window.location.hash = '/sujetos/';
     } else if (tab === 'normativa' || tab === 'umbrales' || tab === 'matriz') {
@@ -230,13 +231,13 @@ export default function App() {
     (r) => !['JUSTIFICADO','REPORTE_ROS'].includes(r.status) && (r.status==='ALERTA_EMITIDA'||r.riskLevel==='CRITICO'||r.riskLevel==='ALTO'||r.analysis?.classification==='INUSUAL'||r.analysis?.classification==='SOSPECHOSA'||r.profileAssessment?.comparison==='DESVIACION')
   ).length;
 
-  const tabModules:Record<string,Parameters<typeof can>[1]>={dashboard:'dashboard',monitoreo:'expedientes',sujetos:'sujetos',normativa:'riesgo',ajustes:'ajustes'};
+  const tabModules:Record<string,Parameters<typeof can>[1]>={dashboard:'dashboard',monitoreo:'expedientes',sujetos:'sujetos',normativa:'riesgo',ajustes:'ajustes',apariencia:'ajustes'};
   const permitted=currentTab==='usuarios'?user?.role==='SUPERADMIN':allow(tabModules[currentTab]||'expedientes');
   useEffect(()=>{if(!loaded||permitted)return;const next=Object.keys(tabModules).find(t=>allow(tabModules[t]));if(next)handleTabChange(next);},[loaded,user,currentTab]);
   if(!loading&&!user)return <div className="login-shell"><section className="surface p-8 max-w-md"><span className="workspace-kicker">IAFAS · PLA/FT</span><h1 className="text-2xl font-semibold my-4">Acceso al sistema</h1><p className="text-sm mb-6">{serverError||'Iniciá sesión con una cuenta habilitada por el superadministrador.'}</p><a className="button-primary" target="_top" href={sitePath('/signin-with-chatgpt?return_to=%2F')}>{passwordAuth()?'Iniciar sesión':'Iniciar sesión con ChatGPT'}</a><a className="block mt-5 text-sm underline" target="_top" href={sitePath('/signout-with-chatgpt?return_to=%2F')}>Cambiar cuenta</a></section></div>;
   const evaluationOpen=isNewEvaluationModalOpen&&!loading&&!serverError&&allow('expedientes',true);
   return (
-    <ListsProvider value={organization.lists}>
+    <ListsProvider value={{lists:organization.lists,disabled:organization.listsDisabled}}>
     <div className="app-shell minimal-ui workspace-ui min-h-screen bg-[#FAFBFC] text-slate-800 flex flex-col font-sans antialiased selection:bg-sky-500 selection:text-white">
       
       {/* Top Header Bar */}
@@ -309,7 +310,7 @@ export default function App() {
           />
         )}
 
-        {currentTab==='ajustes'&&allow('ajustes')&&<fieldset className="min-w-0" disabled={!allow('ajustes',true)}><SystemSettingsView key={loaded?'loaded':'initial'} canBackup={user?.role==='SUPERADMIN'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}} onSaveLists={async lists=>{const result=await request<{organization:OrganizationSettings}>('saveLists',lists);setOrganization(result.organization)}}/></fieldset>}
+        {(currentTab==='ajustes'||currentTab==='apariencia')&&allow('ajustes')&&<fieldset className="min-w-0" disabled={!allow('ajustes',true)}><SystemSettingsView key={(loaded?'loaded':'initial')+currentTab} section={currentTab==='apariencia'?'apariencia':'organizacion'} canBackup={user?.role==='SUPERADMIN'} organization={organization} theme={theme} onThemeChange={setTheme} ready={loaded&&!loading} onSave={async data=>{const result=await request<{organization:OrganizationSettings}>('saveOrganization',data);setOrganization(result.organization)}} onSaveLists={async (lists,disabled)=>{const result=await request<{organization:OrganizationSettings}>('saveLists',{...lists,disabled});setOrganization(result.organization)}}/></fieldset>}
         {loaded && !loading && currentTab==='sujetos' && allow('sujetos') && <SubjectsView canEdit={allow('sujetos',true)} canEvaluate={allow('expedientes',true)} criteria={criteria} subjects={subjects} records={records} onSave={handleSaveSubject} onEvaluate={handleOpenNewEvaluationModal} onViewDossier={setSelectedDossier}/>}
 
         {loaded && !loading && allow('riesgo') && (currentTab === 'normativa' || currentTab === 'parametros' || currentTab === 'matriz' || currentTab === 'umbrales') && (

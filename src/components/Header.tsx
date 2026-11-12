@@ -16,7 +16,7 @@ interface HeaderProps {
 export function Header(p:HeaderProps){
  // Navegación en 4 ítems: Inicio, Casos, Informes y Configuración. Las subsecciones viven dentro de cada uno.
  const firstAllowed=(ids:string[])=>ids.find(id=>allowedTab(p.user,id));
- const casosTarget=firstAllowed(['monitoreo','sujetos']),configTarget=firstAllowed(['normativa','ajustes','usuarios']);
+ const casosTarget=firstAllowed(['monitoreo','sujetos']),configTarget=firstAllowed(['normativa','ajustes','apariencia','usuarios']);
  const items:{id:string;label:string;icon:typeof FileText;active:boolean;onSelect:()=>void}[]=[
   ...(can(p.user,'dashboard')?[{id:'inicio',label:'Inicio',icon:ShieldCheck,active:p.currentTab==='dashboard',onSelect:()=>p.setCurrentTab('dashboard')}]:[]),
   ...(casosTarget?[{id:'casos',label:'Casos',icon:FileText,active:groupOf(p.currentTab)==='casos',onSelect:()=>p.setCurrentTab(groupOf(p.currentTab)==='casos'?p.currentTab:casosTarget)}]:[]),

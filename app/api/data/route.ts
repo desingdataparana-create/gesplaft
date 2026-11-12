@@ -59,16 +59,20 @@ export async function POST(req:Request){try{
    const [current]=await db.select().from(organizationSettings).where(eq(organizationSettings.ownerId,ownerId));
    // Si el pedido no trae colores o ícono (por ejemplo, una pantalla abierta antes de actualizar), se conservan los guardados.
    const keep=current?.organization;
-   const saved={...organization,...(organization.theme===undefined&&keep?.theme?{theme:keep.theme}:{}),...(organization.icon===undefined&&keep?.icon?{icon:keep.icon}:{}),...(keep?.lists?{lists:keep.lists}:{})};
+   const saved={...organization,...(organization.theme===undefined&&keep?.theme?{theme:keep.theme}:{}),...(organization.icon===undefined&&keep?.icon?{icon:keep.icon}:{}),...(keep?.lists?{lists:keep.lists}:{}),...(keep?.listsDisabled?{listsDisabled:keep.listsDisabled}:{})};
    await db.insert(organizationSettings).values({ownerId,organization:saved,updatedAt:new Date().toISOString()}).onConflictDoUpdate({target:organizationSettings.ownerId,set:{organization:saved,updatedAt:new Date().toISOString()}});
    return json({organization:saved});
  }
  if(action==='saveLists'){
-   const input=z.partialRecord(z.enum(LIST_KEYS),z.array(z.string().max(80)).max(300)).parse(payload);
+   // «disabled» (opcional): listas desactivadas, cuyo campo pasa a ser texto libre.
+   const {disabled:rawDisabled,...rawLists}=payload;
+   const input=z.partialRecord(z.enum(LIST_KEYS),z.array(z.string().max(80)).max(300)).parse(rawLists);
+   const disabled=rawDisabled===undefined?undefined:[...new Set(z.array(z.enum(LIST_KEYS)).max(LIST_KEYS.length*2).parse(rawDisabled))];
    const lists=Object.fromEntries(Object.entries(input).map(([k,v])=>[k,cleanList(v as string[])]));
    if(Object.values(lists).some(v=>v.length===0))return json({error:'Una lista no puede quedar vacía.'},400);
    const [current]=await db.select().from(organizationSettings).where(eq(organizationSettings.ownerId,ownerId));
-   const organization={...(current?.organization||DEFAULT_ORGANIZATION),lists};
+   const base=current?.organization||DEFAULT_ORGANIZATION;
+   const organization={...base,lists,listsDisabled:disabled??base.listsDisabled??[]};
    await db.insert(organizationSettings).values({ownerId,organization,updatedAt:new Date().toISOString()}).onConflictDoUpdate({target:organizationSettings.ownerId,set:{organization,updatedAt:new Date().toISOString()}});
    return json({organization});
  }

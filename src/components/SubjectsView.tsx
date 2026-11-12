@@ -1,4 +1,4 @@
-import {ListInput,ListOptions} from '../lists';
+import {ListInput,ListSelect} from '../lists';
 import type {ListKey} from '../data/lists';
 import React,{useState,useEffect} from 'react';
 import {Search,Plus,X,ArrowRight,UserRound,MapPin,Mail,Phone,Pencil} from 'lucide-react';
@@ -51,7 +51,7 @@ export function SubjectEditor({initial,onSave,onClose,criteria}:{criteria:RiskCr
    {text('cuit','CUIT / CUIL',{max:13,mode:'numeric',hint:'Solo números, 11 dígitos. Opcional.'})}
    {fisica&&<label className="field-label">Fecha de nacimiento<input type="date" min="1900-01-01" max={new Date().toISOString().slice(0,10)} value={d.birthDate||''} onChange={e=>setD('birthDate',e.target.value)}/></label>}
    {text('nationality','Nacionalidad',{max:80,list:'nationalities'})}
-   {fisica&&<label className="field-label">Estado civil<select value={d.maritalStatus||''} onChange={e=>setD('maritalStatus',e.target.value)}><option value="">Sin informar</option><ListOptions listKey="maritalStatuses" current={d.maritalStatus}/></select></label>}
+   {fisica&&<label className="field-label">Estado civil<ListSelect listKey="maritalStatuses" value={d.maritalStatus||''} onChange={v=>setD('maritalStatus',v)} empty="Sin informar" maxLength={40}/></label>}
    {text('foreignTaxId','Identificación tributaria (extranjeros)',{max:40,hint:'Solo si el sujeto es extranjero. Opcional.'})}
   </>)}
   {section('Domicilio legal',<>

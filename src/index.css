@@ -249,3 +249,37 @@ html[data-theme="dark"] .workspace-ui .heading-icon {background:#2a404b;color:#a
 @media(max-width:639px){.fab-root{bottom:16px;right:16px}}
 @media(prefers-reduced-motion:reduce){.fab-item{animation:none}.fab-main{transition:none}}
 @media print{.fab-root{display:none!important}}
+
+/* ===== Apariencia configurable (Configuración → Apariencia). Valores por defecto = colores originales. ===== */
+:root{--brand:#176f78;--brand-strong:#125963;--brand-soft:#eef6f6;--brand-on:#fff;--brand-header:#143b46;--brand-on-header:#fff;--brand-accent:#d9a75d;--brand-accent-strong:#c4914a;--brand-on-accent:#172033}
+.brand-header{background:var(--brand-header);color:var(--brand-on-header)}
+.brand-header-ink{color:var(--brand-header)}
+.brand-header-muted{color:var(--brand-on-header);opacity:.9}
+.brand-header .workspace-theme{color:var(--brand-on-header);border-color:color-mix(in oklab,var(--brand-on-header) 45%,transparent)}
+.brand-header .workspace-theme:hover{background:color-mix(in oklab,var(--brand-on-header) 15%,transparent)}
+.brand-header .workspace-signout{width:auto;padding:0 12px;font-size:14px}
+.brand-logo-wide{height:36px;width:auto;max-width:150px;object-fit:contain;border-radius:4px}
+.brand-fab{background:var(--brand-accent);color:var(--brand-on-accent)}
+.brand-fab:hover{background:var(--brand-accent-strong)}
+.brand-fab-label{background:var(--brand-header);color:var(--brand-on-header)}
+.button-primary,.workspace-ui .button-primary{background:var(--brand);border-color:var(--brand);color:var(--brand-on)}
+.button-primary:hover,.workspace-ui .button-primary:hover{background:var(--brand-strong)}
+.search-field:focus-within{border-color:var(--brand)}
+.workspace-nav-item.active,.workspace-nav-item:hover,.workspace-report:hover,.workspace-ui .record-tabs button[aria-pressed="true"]{color:var(--brand);border-color:var(--brand)}
+.login-shell{background:var(--brand-header)}
+:focus-visible{outline-color:var(--brand)}
+html[data-theme="dark"] :is([class*="text-teal-"]):not([class~="text-white"]){color:color-mix(in oklab,var(--brand) 50%,white)}
+html[data-theme="dark"] :is(:is([class~="bg-teal-50"],[class*="bg-teal-50/"]),[class~="bg-teal-100"]){background-color:color-mix(in oklab,var(--brand) 28%,#101820)}
+html[data-theme="dark"] .workspace-nav-item.active,html[data-theme="dark"] .workspace-nav-item:hover,html[data-theme="dark"] .workspace-ui .record-tabs button[aria-pressed="true"]{color:color-mix(in oklab,var(--brand) 50%,white)}
+.brand-swatch{width:100%;display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);text-align:left;font-size:12px;cursor:pointer}
+.brand-swatch[aria-pressed="true"]{border-color:var(--brand);box-shadow:0 0 0 2px color-mix(in oklab,var(--brand) 25%,transparent)}
+.brand-swatch-colors{display:flex;height:22px;border-radius:6px;overflow:hidden}
+.brand-swatch-colors span{flex:1}
+.brand-color{display:flex;align-items:center;gap:10px;font-size:13px}
+.brand-color input[type=color]{width:42px;height:34px;padding:2px;border:1px solid var(--line);border-radius:7px;background:var(--surface);cursor:pointer}
+.brand-color input[type=text]{width:96px;font-family:ui-monospace,monospace;font-size:12px}
+.brand-preview{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.app-shell button.brand-swatch[aria-pressed="true"]{background:var(--brand-soft);color:inherit}
+html[data-theme="dark"] .brand-header button[aria-current="page"]{background-color:#fff!important;color:var(--brand-header)!important}
+html[data-theme="dark"] [role="tablist"][class*="bg-[#e6eef0]"]{background-color:#1d2838}
+html[data-theme="dark"] [role="tablist"] [role="tab"]:not([aria-selected="true"]){color:#c3cddd}

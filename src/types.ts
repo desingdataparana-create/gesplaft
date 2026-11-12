@@ -185,5 +185,17 @@ export interface OrganizationSettings {
  phone:string;
  website:string;
  logo:string;
+ icon?:string;
+ theme?:BrandTheme;
  lists?:import('./data/lists').ListsMap;
+}
+
+// Colores de la interfaz elegidos en Configuración → Apariencia. Valores hexadecimales #RRGGBB.
+export interface BrandTheme {
+ preset:string;
+ primary:string;
+ header:string;
+ accent:string;
+ login:string;
+ logoStyle:'square'|'wide';
 }

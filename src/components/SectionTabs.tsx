@@ -14,10 +14,10 @@ export function SectionTabs({user,currentTab,onChange}:{user:AccessUser|null;cur
  const active=currentTab==='parametros'?'normativa':currentTab;
  if(key==='casos')return <>
   <div className="flex flex-col gap-1"><h1 className="text-3xl font-bold text-slate-900">Casos</h1><p className="text-base text-slate-600">Expedientes y sujetos en un solo lugar.</p></div>
-  <div role="tablist" aria-label={group.label} className="inline-flex self-start bg-[#e6eef0] rounded-[10px] p-1 gap-1">{tabs.map(t=><button key={t.id} role="tab" type="button" aria-selected={active===t.id} onClick={()=>onChange(t.id)} className={`px-5 py-2.5 rounded-lg text-[15px] cursor-pointer ${active===t.id?'bg-white text-[#143b46] font-semibold shadow-xs':'text-[#35505a] font-medium hover:text-[#143b46]'}`}>{t.label}</button>)}</div>
+  <div role="tablist" aria-label={group.label} className="inline-flex self-start bg-[#e6eef0] rounded-[10px] p-1 gap-1">{tabs.map(t=><button key={t.id} role="tab" type="button" aria-selected={active===t.id} onClick={()=>onChange(t.id)} className={`px-5 py-2.5 rounded-lg text-[15px] cursor-pointer ${active===t.id?'bg-white text-teal-900 font-semibold shadow-xs':'text-[#35505a] font-medium hover:text-teal-900'}`}>{t.label}</button>)}</div>
  </>;
  return <>
   <div className="flex flex-col gap-1"><h1 className="text-3xl font-bold text-slate-900">Configuración</h1><p className="text-base text-slate-600">Cada persona ve solo las secciones para las que tiene permiso.</p></div>
-  <div role="tablist" aria-label={group.label} className="flex flex-wrap gap-1 border-b border-slate-200">{tabs.map(t=><button key={t.id} role="tab" type="button" aria-selected={active===t.id} onClick={()=>onChange(t.id)} className={`px-4 py-3 text-[15px] cursor-pointer border-b-[3px] -mb-px ${active===t.id?'font-bold text-[#143b46] border-teal-700':'font-medium text-slate-600 border-transparent hover:text-slate-900'}`}>{t.label}</button>)}</div>
+  <div role="tablist" aria-label={group.label} className="flex flex-wrap gap-1 border-b border-slate-200">{tabs.map(t=><button key={t.id} role="tab" type="button" aria-selected={active===t.id} onClick={()=>onChange(t.id)} className={`px-4 py-3 text-[15px] cursor-pointer border-b-[3px] -mb-px ${active===t.id?'font-bold text-teal-900 border-teal-700':'font-medium text-slate-600 border-transparent hover:text-slate-900'}`}>{t.label}</button>)}</div>
  </>;
 }

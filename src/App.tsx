@@ -6,6 +6,7 @@ import {UsersView} from './components/UsersView';
 import {DashboardView,type DashboardData} from './components/DashboardView';
 import { SystemSettingsView, type ThemeMode } from './components/SystemSettingsView';
 import { DEFAULT_ORGANIZATION } from './data/organization';
+import { applyBrand, rememberBrand, setFavicon } from './brand';
 import { ListsProvider } from './lists';
 import type { OrganizationSettings } from './types';
 import { request } from './utils/api';
@@ -35,7 +36,8 @@ export default function App() {
   const [user,setUser]=useState<AccessUser|null>(null);
   const [dashboard,setDashboard]=useState<DashboardData|null>(null);
   const allow=(module:Parameters<typeof can>[1],write=false)=>can(user,module,write);
-  const [organization,setOrganization]=useState<OrganizationSettings>(DEFAULT_ORGANIZATION);
+  // Mientras cargan los datos se muestra el último nombre conocido de la organización (evita ver «IAFAS» unos segundos).
+  const [organization,setOrganization]=useState<OrganizationSettings>(()=>{try{const v=JSON.parse(localStorage.getItem('gesplaft_org_header')||'null');if(v&&typeof v.shortName==='string')return {...DEFAULT_ORGANIZATION,shortName:v.shortName,area:String(v.area||DEFAULT_ORGANIZATION.area),legalName:String(v.legalName||'')};}catch{/* sin almacenamiento local */}return DEFAULT_ORGANIZATION;});
   useEffect(()=>{document.title=`${organization.shortName} · ${organization.area}`},[organization.shortName,organization.area]);
   const [theme,setTheme]=useState<ThemeMode>('system');
   const [themeLoaded,setThemeLoaded]=useState(false);
@@ -51,6 +53,8 @@ export default function App() {
   const [serverError, setServerError] = useState('');
   const [saving, setSaving] = useState(false);
   const [legacyRecords, setLegacyRecords] = useState<EvaluationRecord[]>([]);
+  // Colores, ícono y estilo del logo definidos en Configuración → Apariencia (para toda la organización).
+  useEffect(()=>{if(!loaded)return;applyBrand(organization.theme);setFavicon(organization.icon);rememberBrand(organization.theme);try{localStorage.setItem('gesplaft_org_header',JSON.stringify({shortName:organization.shortName,area:organization.area,legalName:organization.legalName}))}catch{/* sin almacenamiento local */}},[loaded,organization]);
   const loadState = async () => {
     const data = await request<{criteria:RiskCriterion[];factorWeights:FactorWeight[];thresholds:RegulatoryThreshold[];records:EvaluationRecord[];subjects:Subject[];organization:OrganizationSettings;user:AccessUser;dashboard:DashboardData|null}>();
     setUser(data.user);setDashboard(data.dashboard);setOrganization(data.organization||DEFAULT_ORGANIZATION);setCriteria(data.criteria); setFactorWeights(data.factorWeights); setThresholds(data.thresholds); setRecords(data.records); setSubjects(data.subjects);setLoaded(true);

@@ -1,10 +1,12 @@
 import React,{createContext,useContext,useId} from 'react';
-import {listOptions,type ListKey,type ListsMap} from './data/lists';
-// Listas configuradas y cuáles están desactivadas (en esas el campo es de texto libre).
+import {listOptions,REQUIRED_LISTS,type ListKey,type ListsMap} from './data/lists';
+// Listas configuradas y cuáles están desactivadas (sus campos no se muestran en los formularios).
 const ListsContext=createContext<{lists?:ListsMap;disabled?:ListKey[]}>({});
 export const ListsProvider=ListsContext.Provider;
 export const useListOptions=(key:ListKey)=>listOptions(useContext(ListsContext).lists,key);
-export const useListEnabled=(key:ListKey)=>!useContext(ListsContext).disabled?.includes(key);
+export const useListEnabled=(key:ListKey)=>REQUIRED_LISTS.includes(key)||!useContext(ListsContext).disabled?.includes(key);
+// Muestra su contenido solo si la lista está activa (una lista desmarcada oculta sus campos).
+export function IfList({listKey,children}:{listKey:ListKey;children:React.ReactNode}){return useListEnabled(listKey)?<>{children}</>:null;}
 type InputProps=Omit<React.InputHTMLAttributes<HTMLInputElement>,'onChange'|'list'>;
 // Campo de texto con sugerencias de la lista configurada: se elige o se escribe otro valor.
 export function ListInput({listKey,value,onChange,...rest}:InputProps&{listKey:ListKey;value:string;onChange:(v:string)=>void}){

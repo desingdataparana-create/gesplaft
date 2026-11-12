@@ -1,4 +1,4 @@
-import {ListInput,ListSelect} from '../lists';
+import {ListInput,ListSelect,IfList} from '../lists';
 import type {ListKey} from '../data/lists';
 import React,{useState,useEffect} from 'react';
 import {Search,Plus,X,ArrowRight,UserRound,MapPin,Mail,Phone,Pencil} from 'lucide-react';
@@ -50,8 +50,8 @@ export function SubjectEditor({initial,onSave,onClose,criteria}:{criteria:RiskCr
    <label className="field-label">Número de documento *<input required maxLength={20} readOnly={!!initial.id} value={form.taxId||''} onChange={e=>set('taxId',e.target.value)}/><span className="text-[11px] font-normal text-slate-500">Sin puntos. {initial.id?'No se puede cambiar.':'Con este número se busca al sujeto en las próximas operaciones.'}</span></label>
    {text('cuit','CUIT / CUIL',{max:13,mode:'numeric',hint:'Solo números, 11 dígitos. Opcional.'})}
    {fisica&&<label className="field-label">Fecha de nacimiento<input type="date" min="1900-01-01" max={new Date().toISOString().slice(0,10)} value={d.birthDate||''} onChange={e=>setD('birthDate',e.target.value)}/></label>}
-   {text('nationality','Nacionalidad',{max:80,list:'nationalities'})}
-   {fisica&&<label className="field-label">Estado civil<ListSelect listKey="maritalStatuses" value={d.maritalStatus||''} onChange={v=>setD('maritalStatus',v)} empty="Sin informar" maxLength={40}/></label>}
+   <IfList listKey="nationalities">{text('nationality','Nacionalidad',{max:80,list:'nationalities'})}</IfList>
+   {fisica&&<IfList listKey="maritalStatuses"><label className="field-label">Estado civil<ListSelect listKey="maritalStatuses" value={d.maritalStatus||''} onChange={v=>setD('maritalStatus',v)} empty="Sin informar" maxLength={40}/></label></IfList>}
    {text('foreignTaxId','Identificación tributaria (extranjeros)',{max:40,hint:'Solo si el sujeto es extranjero. Opcional.'})}
   </>)}
   {section('Domicilio legal',<>
@@ -61,7 +61,7 @@ export function SubjectEditor({initial,onSave,onClose,criteria}:{criteria:RiskCr
    {text('apartment','Departamento',{max:20})}
    {text('postalCode','Código postal',{max:20})}
    {text('locality','Localidad',{required:true})}
-   {text('province','Provincia',{required:true,max:80,list:'provinces'})}
+   <IfList listKey="provinces">{text('province','Provincia',{required:true,max:80,list:'provinces'})}</IfList>
    {text('country','País',{required:true,max:80})}
   </>)}
   {section('Contacto y actividad',<>

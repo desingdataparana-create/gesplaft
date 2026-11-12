@@ -1,18 +1,20 @@
 // Listas desplegables que el administrador puede editar en Configuración → Organización.
 // Los valores elegidos se guardan como texto en cada ficha: cambiar una lista no altera lo ya cargado.
 export const LIST_DEFS=[
- {key:'departments',label:'Departamentos de la operación',use:'Evaluación → Departamento',select:true},
- {key:'channels',label:'Salas de juego o canales',use:'Evaluación → Sala de juego o canal'},
+ {key:'departments',label:'Departamentos de la operación',use:'Evaluación → Departamento',select:true,required:true},
+ {key:'channels',label:'Salas de juego o canales',use:'Evaluación → Sala de juego o canal',required:true},
  {key:'games',label:'Juegos',use:'Evaluación → Juego'},
  {key:'modalities',label:'Modalidades',use:'Evaluación → Modalidad'},
- {key:'draws',label:'Sorteos',use:'Evaluación → Sorteo'},
- {key:'banks',label:'Bancos',use:'Evaluación → Banco emisor'},
+ {key:'draws',label:'Sorteos',use:'Evaluación → Sorteo, fecha del sorteo y N° de agencia'},
+ {key:'banks',label:'Bancos',use:'Evaluación → Banco emisor',required:true},
  {key:'maritalStatuses',label:'Estados civiles',use:'Sujeto → Estado civil',select:true},
  {key:'nationalities',label:'Nacionalidades',use:'Sujeto → Nacionalidad'},
  {key:'provinces',label:'Provincias',use:'Sujeto → Provincia'},
- {key:'activities',label:'Actividades u ocupaciones',use:'Sujeto → Actividad u ocupación'},
+ {key:'activities',label:'Actividades u ocupaciones',use:'Sujeto → Actividad u ocupación',required:true},
 ] as const;
 export type ListKey=typeof LIST_DEFS[number]['key'];
+// Campos obligatorios: su lista no se puede quitar de los formularios.
+export const REQUIRED_LISTS=LIST_DEFS.filter(d=>'required' in d&&d.required).map(d=>d.key) as ListKey[];
 export const LIST_KEYS=LIST_DEFS.map(d=>d.key) as unknown as [ListKey,...ListKey[]];
 export const DEFAULT_LISTS:Record<ListKey,string[]>={
  departments:['Paraná','Concordia','Gualeguaychú','Colón','Concepción del Uruguay','Victoria','Federación','La Paz','Villaguay','Gualeguay'],

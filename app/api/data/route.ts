@@ -1,7 +1,7 @@
 import {access,requireModule} from '../../access';
 import {can} from '../../../src/access';
 import { DEFAULT_ORGANIZATION } from '../../../src/data/organization';
-import { LIST_KEYS, cleanList } from '../../../src/data/lists';
+import { LIST_KEYS, REQUIRED_LISTS, cleanList } from '../../../src/data/lists';
 import { and, eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '../../../db/index';
@@ -67,7 +67,7 @@ export async function POST(req:Request){try{
    // «disabled» (opcional): listas desactivadas, cuyo campo pasa a ser texto libre.
    const {disabled:rawDisabled,...rawLists}=payload;
    const input=z.partialRecord(z.enum(LIST_KEYS),z.array(z.string().max(80)).max(300)).parse(rawLists);
-   const disabled=rawDisabled===undefined?undefined:[...new Set(z.array(z.enum(LIST_KEYS)).max(LIST_KEYS.length*2).parse(rawDisabled))];
+   const disabled=rawDisabled===undefined?undefined:[...new Set(z.array(z.enum(LIST_KEYS)).max(LIST_KEYS.length*2).parse(rawDisabled))].filter(k=>!REQUIRED_LISTS.includes(k));
    const lists=Object.fromEntries(Object.entries(input).map(([k,v])=>[k,cleanList(v as string[])]));
    if(Object.values(lists).some(v=>v.length===0))return json({error:'Una lista no puede quedar vacía.'},400);
    const [current]=await db.select().from(organizationSettings).where(eq(organizationSettings.ownerId,ownerId));
